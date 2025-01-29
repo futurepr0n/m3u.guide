@@ -1,0 +1,323 @@
+/* Basic styling */
+body {
+    font-family: Arial, sans-serif;
+    margin: 20px;
+    background-color: #f5f5f5;
+}
+
+/* Login form styling */
+.login-container {
+    max-width: 400px;
+    margin: 100px auto;
+    padding: 20px;
+    background-color: white;
+    border-radius: 5px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Form elements */
+input[type="text"],
+input[type="password"],
+input[type="url"],
+input[type="email"],
+select {
+    width: 100%;
+    padding: 8px;
+    margin: 5px 0 15px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+label {
+    font-weight: bold;
+    display: block;
+    margin-bottom: 5px;
+}
+
+/* Buttons */
+button, .btn, input[type="submit"] {
+    background-color: #0d6efd;
+    color: white;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.logout-btn {
+    float: right;
+    background-color: #dc3545;
+    color: white;
+    text-decoration: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+}
+
+.create-btn {
+    background-color: #0d6efd;
+    color: white;
+    margin-bottom: 20px;
+}
+
+.edit-btn { background-color: #ffc107; }
+.delete-btn { background-color: #dc3545; }
+.process-btn { background-color: #28a745; }
+.analyze-btn { background-color: #17a2b8; }
+
+/* Table styling */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+    background-color: white;
+}
+
+th, td {
+    padding: 12px;
+    text-align: left;
+    border: 1px solid #ddd;
+}
+
+th {
+    background-color: #f8f9fa;
+    font-weight: bold;
+}
+
+/* Modal styling */
+.modal {
+    background: white;
+    padding: 20px;
+    border-radius: 5px;
+    max-width: 500px;
+    margin: 0 auto;
+    position: relative;
+}
+
+.modal a.close-modal {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    cursor: pointer;
+}
+
+.modal-header {
+    margin-bottom: 20px;
+}
+
+.button-group {
+    margin-top: 20px;
+    text-align: right;
+}
+
+.button-group button {
+    margin-left: 10px;
+}
+
+/* Processing status */
+#processingStatus {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: white;
+    padding: 20px;
+    border-radius: 5px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+#spinner {
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #3498db;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+    margin: 0 auto;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Registration link */
+.register-link {
+    margin-top: 15px;
+    text-align: center;
+}
+
+.register-link a {
+    color: #0d6efd;
+    text-decoration: none;
+}
+
+.register-link a:hover {
+    text-decoration: underline;
+}
+
+.content-analysis-btn {
+    background-color: #6c757d;
+    color: white;
+    margin-left: 5px;
+}
+
+.content-analysis-btn:disabled {
+    background-color: #999;
+    cursor: not-allowed;
+}
+
+.content-analysis-noepg-btn {
+    background-color: #6c757d;
+    color: white;
+    margin-left: 5px;
+}
+
+.content-analysis-noepg-btn:disabled {
+    background-color: #999;
+    cursor: not-allowed;
+}
+
+
+.content-analysis-notvg-btn {
+    background-color: #6c757d;
+    color: white;
+    margin-left: 5px;
+}
+
+.content-analysis-notvg-btn:disabled {
+    background-color: #999;
+    cursor: not-allowed;
+}
+
+.back-btn {
+    background-color: #6c757d;
+    color: white;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    text-decoration: none;
+    transition: background-color 0.3s;
+    display: inline-block;
+}
+
+.back-btn:hover {
+    background-color: #5a6268;
+    color: white;
+    text-decoration: none;
+}
+
+/* Ensure proper spacing in header */
+.header h1 {
+    margin: 0;
+}
+
+/* Responsive image styling */
+.responsive-image {
+    max-width: 100%;  /* Adjusts to the viewport width */
+    max-height: 50vh; /* Adjusts to the viewport height */
+    height: auto;     /* Maintains aspect ratio */
+    margin-bottom: 20px; /* Adds spacing below the image */
+}
+
+.channel-logo {
+    width: 30px;
+    height: 30px;
+    object-fit: cover;
+    border-radius: 4px;
+    vertical-align: middle;
+}
+
+.logo-cell {
+    width: 40px;
+    text-align: center;
+    vertical-align: middle;
+}
+
+/* Movie poster styling with increased specificity and enhanced features */
+/* Movie poster styling with proper size constraints */
+.movie-table .movie-poster {
+    max-width: 120px;  /* Constrain width */
+    max-height: 100px; /* Constrain height */
+    width: auto;       /* Allow proper scaling */
+    height: auto;      /* Maintain aspect ratio */
+    border-radius: 4px;
+    vertical-align: middle;
+    transition: transform 0.3s ease;
+    display: block;
+    margin: 0 auto;
+    object-fit: contain; /* Ensure the image fits within dimensions while maintaining aspect ratio */
+}
+
+.movie-table .movie-poster:hover {
+    transform: scale(2);
+    position: relative;
+    z-index: 1000;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+.movie-table .poster-cell {
+    width: 120px;
+    min-width: 120px;  /* Prevent cell from expanding */
+    max-width: 120px;  /* Ensure consistent width */
+    text-align: center;
+    vertical-align: middle;
+    padding: 8px;
+    position: relative;
+}
+
+/* Ensure table cells maintain proper spacing */
+.movie-table td {
+    vertical-align: middle;
+    padding: 12px;
+    position: relative;
+}
+
+.movie-table {
+    border-spacing: 0;
+    border-collapse: separate;
+    border-radius: 5px;
+    margin-bottom: 20px;
+    width: 100%;
+    table-layout: fixed; /* This helps maintain column widths */
+}
+
+.movie-table tr {
+    background: white;
+    transition: background-color 0.2s;
+}
+
+.movie-table tr:hover {
+    background: #f8f9fa;
+}
+
+/* Handle image loading states */
+.movie-table img[src=""],
+.movie-table img:not([src]) {
+    display: none;
+}
+
+.optimize-btn {
+    background-color: #20c997;
+    color: white;
+    margin-left: 5px;
+}
+
+.optimize-btn:hover {
+    background-color: #1ba97f;
+}
+
+.optimize-btn:disabled {
+    background-color: #99e1c7;
+    cursor: not-allowed;
+}
+
+/* Hide the command column header */
+th[data-column="command"],
+td[data-column="command"] {
+    display: none;
+}
+
+/* Ensure the command data is still accessible but hidden */
+.hidden-command {
+    display: none;
+}

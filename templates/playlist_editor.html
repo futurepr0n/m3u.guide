@@ -1,0 +1,238 @@
+<!-- templates/playlist_editor.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edit Playlist - {{ playlist.name }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .editor-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+
+        .panel {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 20px;
+            height: calc(100vh - 200px);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .panel-content {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .toolbar {
+            display: flex;
+            gap: 10px;
+            padding: 10px 0;
+        }
+
+        .list-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+        }
+
+        .list-item:hover {
+            background: #f8f9fa;
+        }
+
+        .list-item.selected {
+            background: #e3f2fd;
+        }
+
+        .item-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .channel-count {
+            background: #e9ecef;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.8em;
+        }
+
+        .item-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .action-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 4px;
+            color: #6c757d;
+            transition: color 0.2s;
+        }
+
+        .action-btn:hover {
+            color: #000;
+        }
+
+        .action-btn.eye-btn.hidden {
+            color: #dc3545;
+        }
+
+        .stats-bar {
+            background: #fff;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-around;
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #0d6efd;
+        }
+
+        .header-actions {
+            position: sticky;
+            top: 0;
+            background: #f5f5f5;
+            padding: 20px;
+            z-index: 100;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="header-actions">
+        <h1>Editing: {{ playlist.name }}</h1>
+        <div class="toolbar">
+            <button class="btn" onclick="resetChanges()">Reset all changes</button>
+            <button class="btn btn-primary" onclick="saveChanges()">Save Changes</button>
+        </div>
+    </div>
+
+    <div class="stats-bar">
+        <div class="stat-item">
+            <div class="stat-value">{{ stats.total_groups }}</div>
+            <div class="stat-label">Groups</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-value">{{ stats.total_channels }}</div>
+            <div class="stat-label">Total Channels</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-value" id="visibleChannels">{{ stats.total_visible_channels }}</div>
+            <div class="stat-label">Visible Channels</div>
+        </div>
+    </div>
+
+    <div class="editor-container">
+        <!-- Groups Panel -->
+        <div class="panel">
+            <div class="panel-header">
+                <h2>Groups</h2>
+                <button class="btn" onclick="showGroupTools()">
+                    <i class="fas fa-tools"></i> More group tools
+                </button>
+            </div>
+            <div class="panel-content" id="groupList">
+                {% for group in groups %}
+                <div class="list-item" 
+                    data-group-id="{{ loop.index0 }}">
+                    <div class="item-info">
+                        <span>{{ group.name }}</span>
+                        <span class="channel-count">{{ group.channel_count }}</span>
+                    </div>
+                    <div class="item-actions">
+                        <button class="action-btn eye-btn" title="Toggle visibility">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                        <button class="action-btn" title="Edit">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="action-btn" title="Remove">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Channels Panel -->
+        <div class="panel">
+            <div class="panel-header">
+                <h2>Channels</h2>
+                <button class="btn" onclick="showChannelTools()">
+                    <i class="fas fa-tools"></i> More channel tools
+                </button>
+            </div>
+            <div class="panel-content" id="channelList">
+                <!-- Channels will be loaded here when a group is selected -->
+                <div class="empty-state">
+                    Select a group to view its channels
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden templates for channel items -->
+    <template id="channelItemTemplate">
+        <div class="list-item" data-channel-id="">
+            <div class="item-info">
+                <img class="channel-logo" src="" alt="">
+                <span class="channel-name"></span>
+            </div>
+            <div class="item-actions">
+                <button class="action-btn eye-btn" onclick="toggleChannelVisibility(this, event)">
+                    <i class="fas fa-eye"></i>
+                </button>
+                <button class="action-btn" onclick="editChannel(this, event)">
+                    <i class="fas fa-edit"></i>
+                </button>
+                <button class="action-btn" onclick="removeChannel(this, event)">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+        </div>
+    </template>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <script>
+        // Initialize data
+        const playlistData = {
+            groups: {{ groups | tojson | safe }},
+            selectedGroup: null,
+            originalData: null  // Will store a copy of the initial data for reset functionality
+        };
+    </script>
+    <script src="{{ url_for('static', filename='js/playlist-editor.js') }}"></script>
+</body>
+</html>

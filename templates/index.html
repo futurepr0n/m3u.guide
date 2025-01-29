@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Playlist Manager</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jquery-modal/0.9.1/jquery.modal.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <a href="{{ url_for('auth.logout') }}" class="logout-btn">Logout</a>
+    <button onclick="$('#createPlaylistModal').modal('show')" class="create-btn">Create Playlist</button>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Source</th>
+                <th>Channels</th>
+                <th>With EPG</th>
+                <th>Movies</th>
+                <th>Series</th>
+                <th>Unmatched</th>
+                <th data-column="command">Command</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="playlistTableBody">
+        </tbody>
+    </table>
+
+    <!-- Create Playlist Modal -->
+    <div id="createPlaylistModal" class="modal">
+        <div class="modal-header">
+            <h2>Create a new playlist</h2>
+        </div>
+        <div class="modal-body">
+            <form id="createPlaylistForm">
+                <div class="form-group">
+                    <label for="playlistName">Name *</label>
+                    <input type="text" id="playlistName" name="name" required>
+                </div>
+                <div class="form-group">
+                    <label>Source of playlist</label>
+                    <select id="playlistSource" name="source" required>
+                        <option value="">Select Source</option>
+                        <option value="API Line">API Line</option>
+                        <option value="M3U Url">M3U Url</option>
+                        <option value="M3U File">Upload M3U file</option>
+                    </select>
+                </div>
+                <div class="button-group">
+                    <button type="button" onclick="nextStep()" class="btn">Next</button>
+                    <button type="button" onclick="$.modal.close()" class="btn-secondary">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- API Line Modal -->
+    <div id="apiLineModal" class="modal">
+        <div class="modal-header">
+            <h2>API Line Details</h2>
+        </div>
+        <div class="form-group">
+            <input type="text" id="server" placeholder="Server">
+            <input type="text" id="username" placeholder="Username">
+            <input type="password" id="password" placeholder="Password">
+        </div>
+        <div class="button-group">
+            <button onclick="submitApiLine()" class="btn">Save</button>
+            <button onclick="$.modal.close()" class="btn-secondary">Cancel</button>
+        </div>
+    </div>
+
+    <!-- M3U URL Modal -->
+    <div id="m3uUrlModal" class="modal">
+        <div class="modal-header">
+            <h2>M3U URL</h2>
+        </div>
+        <div class="form-group">
+            <input type="url" id="m3uUrl" placeholder="M3U URL">
+            <input type="url" id="epgUrl" placeholder="EPG URL">
+        </div>
+        <div class="button-group">
+            <button onclick="submitM3uUrl()" class="btn">Save</button>
+            <button onclick="$.modal.close()" class="btn-secondary">Cancel</button>
+        </div>
+    </div>
+
+    <!-- M3U File Modal -->
+    <div id="m3uFileModal" class="modal">
+        <div class="modal-header">
+            <h2>Upload M3U File</h2>
+        </div>
+        <div class="form-group">
+            <input type="file" id="m3uFile" accept=".m3u,.m3u8">
+            <input type="file" id="epgFile" accept=".xml">
+        </div>
+        <div class="button-group">
+            <button onclick="submitM3uFile()" class="btn">Save</button>
+            <button onclick="$.modal.close()" class="btn-secondary">Cancel</button>
+        </div>
+    </div>
+
+    <div id="processingStatus" style="display: none; text-align: center; margin-top: 20px;">
+        <div id="spinner"></div>
+        <span id="statusMessage">Processing...</span>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-modal/0.9.1/jquery.modal.min.js"></script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
