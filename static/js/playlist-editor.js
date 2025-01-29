@@ -381,11 +381,163 @@ function resetChanges() {
 }
 
 function showGroupTools() {
-    // Implement additional group tools functionality
-    alert('Group tools coming soon!');
+    // Create a dropdown menu for group tools
+    let dropdown = document.getElementById('groupToolsDropdown');
+    
+    // If dropdown doesn't exist, create it
+    if (!dropdown) {
+        dropdown = document.createElement('div');
+        dropdown.id = 'groupToolsDropdown';
+        dropdown.className = 'tools-dropdown';
+        dropdown.innerHTML = `
+            <button class="btn" onclick="toggleAllGroups(true)">Enable All Groups</button>
+            <button class="btn" onclick="toggleAllGroups(false)">Disable All Groups</button>
+        `;
+        
+        // Position the dropdown under the More group tools button
+        const groupToolsBtn = document.querySelector('.panel-header button');
+        groupToolsBtn.parentNode.appendChild(dropdown);
+        
+        // Add styles for the dropdown
+        const style = document.createElement('style');
+        style.textContent = `
+            .tools-dropdown {
+                position: absolute;
+                right: 20px;
+                top: 60px;
+                background: white;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                padding: 8px;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                z-index: 1000;
+                display: none;
+            }
+            .tools-dropdown button {
+                display: block;
+                width: 100%;
+                margin: 4px 0;
+                text-align: left;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    // Toggle the dropdown
+    dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', function closeDropdown(e) {
+        if (!dropdown.contains(e.target) && !e.target.matches('.panel-header button')) {
+            dropdown.style.display = 'none';
+            document.removeEventListener('click', closeDropdown);
+        }
+    });
+}
+
+function toggleAllGroups(enable) {
+    // Close the dropdown
+    document.getElementById('groupToolsDropdown').style.display = 'none';
+    
+    // Update all groups' visibility
+    currentState.groups.forEach((group, idx) => {
+        group.visible = enable;
+        
+        // Update UI for each group
+        const groupItem = document.querySelector(`#groupList .list-item[data-group-id="${idx}"]`);
+        const eyeBtn = groupItem.querySelector('.eye-btn');
+        const icon = eyeBtn.querySelector('i');
+        
+        eyeBtn.classList.toggle('hidden', !enable);
+        if (enable) {
+            icon.classList.replace('fa-eye-slash', 'fa-eye');
+        } else {
+            icon.classList.replace('fa-eye', 'fa-eye-slash');
+        }
+        
+        // Update all channels in the group
+        group.channels.forEach(channel => {
+            channel.visible = enable;
+        });
+    });
+
+    // If there's a selected group, refresh its channel display
+    if (currentState.selectedGroup !== null) {
+        displayGroupChannels(currentState.selectedGroup);
+    }
+
+    // Update stats and mark changes
+    updateStats();
+    markChanges();
 }
 
 function showChannelTools() {
-    // Implement additional channel tools functionality
-    alert('Channel tools coming soon!');
+    document.getElementById('groupToolsDropdown').style.display = 'none';
+    
+    // Update all groups' visibility
+    currentState.groups.forEach((group, idx) => {
+        group.visible = enable;
+        
+        // Update UI for each group
+        const groupItem = document.querySelector(`#groupList .list-item[data-group-id="${idx}"]`);
+        const eyeBtn = groupItem.querySelector('.eye-btn');
+        const icon = eyeBtn.querySelector('i');
+        
+        eyeBtn.classList.toggle('hidden', !enable);
+        if (enable) {
+            icon.classList.replace('fa-eye-slash', 'fa-eye');
+        } else {
+            icon.classList.replace('fa-eye', 'fa-eye-slash');
+        }
+        
+        // Update all channels in the group
+        group.channels.forEach(channel => {
+            channel.visible = enable;
+        });
+    });
+
+    // If there's a selected group, refresh its channel display
+    if (currentState.selectedGroup !== null) {
+        displayGroupChannels(currentState.selectedGroup);
+    }
+
+    // Update stats and mark changes
+    updateStats();
+    markChanges();
+}
+
+function downloadEditedPlaylist() {
+    // Show processing status
+    const processingStatus = document.getElementById('processingStatus');
+    processingStatus.style.display = 'block';
+    
+    fetch('/download-playlist', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            groups: playlistData.groups
+        })
+    })
+    .then(response => response.blob())
+    .then(blob => {
+        // Create download link
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'edited_playlist.m3u';
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        // Hide processing status
+        processingStatus.style.display = 'none';
+    })
+    .catch(error => {
+        console.error('Error downloading playlist:', error);
+        alert('Error downloading playlist');
+        processingStatus.style.display = 'none';
+    });
 }

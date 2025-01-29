@@ -812,6 +812,39 @@ def save_edited_playlist(user_id, playlist_name):
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/download-playlist', methods=['POST'])
+def download_playlist():
+    if 'user_id' not in session:
+        return jsonify({'error': 'User not logged in'}), 403
+        
+    try:
+        data = request.json
+        playlist = Playlist.query.filter_by(
+            user_id=session['user_id'],
+            name=data.get('name')
+        ).first()
+        
+        if not playlist:
+            return jsonify({'error': 'Playlist not found'}), 404
+            
+        m3u_content = "#EXTM3U\n"
+        
+        for group in playlist.groups:
+            if group.visible:
+                for channel in group.channels:
+                    if channel.visible:
+                        m3u_content += f"{channel.extinf}\n"
+                        m3u_content += f"{channel.url}\n"
+        
+        response = make_response(m3u_content)
+        response.headers['Content-Type'] = 'application/x-mpegurl'
+        response.headers['Content-Disposition'] = 'attachment; filename=edited_playlist.m3u'
+        
+        return response
+        
+    except Exception as e:
+        app.logger.error(f"Error downloading playlist: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 
 @app.errorhandler(404)
