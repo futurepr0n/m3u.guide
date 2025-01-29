@@ -1,15 +1,22 @@
 FROM python:3.9
 
+# Install system dependencies including python3-venv
+RUN apt-get update && apt-get install -y \
+    python3-venv \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
-# Copy requirements first to leverage Docker cache
-COPY requirements.txt .
+# Set up Python virtual environment
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
-# Install dependencies
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the application
 COPY . .
 
-# Command to run the application
+# Explicitly expose port 5000
+EXPOSE 5000
+
 CMD ["python", "app.py"]

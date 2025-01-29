@@ -3,8 +3,13 @@ services:
   web:
     build: .
     ports:
-      - "5000:5000"
+      - "4444:4444"
     volumes:
       - .:/app
+      # Add proper Docker socket mounting for macOS
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
+      - FLASK_APP=app.py
       - FLASK_ENV=development
+      - FLASK_DEBUG=1
+    user: root  # Ensure proper permissions
