@@ -381,10 +381,8 @@ function resetChanges() {
 }
 
 function showGroupTools() {
-    // Create a dropdown menu for group tools
     let dropdown = document.getElementById('groupToolsDropdown');
     
-    // If dropdown doesn't exist, create it
     if (!dropdown) {
         dropdown = document.createElement('div');
         dropdown.id = 'groupToolsDropdown';
@@ -394,17 +392,15 @@ function showGroupTools() {
             <button class="btn" onclick="toggleAllGroups(false)">Disable All Groups</button>
         `;
         
-        // Position the dropdown under the More group tools button
-        const groupToolsBtn = document.querySelector('.panel-header button');
-        groupToolsBtn.parentNode.appendChild(dropdown);
+        // Get the button that triggered this
+        const groupToolsBtn = document.querySelector('.panel:first-child .panel-header button');
+        // Insert the dropdown right after the button
+        groupToolsBtn.insertAdjacentElement('afterend', dropdown);
         
-        // Add styles for the dropdown
         const style = document.createElement('style');
         style.textContent = `
             .tools-dropdown {
                 position: absolute;
-                right: 20px;
-                top: 60px;
                 background: white;
                 border: 1px solid #ddd;
                 border-radius: 4px;
@@ -412,27 +408,24 @@ function showGroupTools() {
                 box-shadow: 0 2px 4px rgba(0,0,0,0.1);
                 z-index: 1000;
                 display: none;
+                width: 200px;
+                margin-top: 5px;
             }
             .tools-dropdown button {
                 display: block;
                 width: 100%;
                 margin: 4px 0;
                 text-align: left;
+                padding: 8px;
+            }
+            .tools-dropdown button:hover {
+                background: #f8f9fa;
             }
         `;
         document.head.appendChild(style);
     }
 
-    // Toggle the dropdown
     dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
-
-    // Close dropdown when clicking outside
-    document.addEventListener('click', function closeDropdown(e) {
-        if (!dropdown.contains(e.target) && !e.target.matches('.panel-header button')) {
-            dropdown.style.display = 'none';
-            document.removeEventListener('click', closeDropdown);
-        }
-    });
 }
 
 function toggleAllGroups(enable) {
@@ -472,15 +465,40 @@ function toggleAllGroups(enable) {
 }
 
 function showChannelTools() {
-    document.getElementById('groupToolsDropdown').style.display = 'none';
+    let dropdown = document.getElementById('channelToolsDropdown');
     
-    // Update all groups' visibility
-    currentState.groups.forEach((group, idx) => {
-        group.visible = enable;
+    if (!dropdown) {
+        dropdown = document.createElement('div');
+        dropdown.id = 'channelToolsDropdown';
+        dropdown.className = 'tools-dropdown';
+        dropdown.innerHTML = `
+            <button class="btn" onclick="toggleAllChannels(true)">Enable All Channels</button>
+            <button class="btn" onclick="toggleAllChannels(false)">Disable All Channels</button>
+        `;
         
-        // Update UI for each group
-        const groupItem = document.querySelector(`#groupList .list-item[data-group-id="${idx}"]`);
-        const eyeBtn = groupItem.querySelector('.eye-btn');
+        const channelToolsBtn = document.querySelector('.panel:nth-child(2) .panel-header button');
+        channelToolsBtn.insertAdjacentElement('afterend', dropdown);
+    }
+
+    dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+}
+
+function toggleAllChannels(enable) {
+    document.getElementById('channelToolsDropdown').style.display = 'none';
+    
+    if (currentState.selectedGroup === null) {
+        alert('Please select a group first');
+        return;
+    }
+    
+    // Get the current group's channels
+    const group = currentState.groups[currentState.selectedGroup];
+    group.channels.forEach((channel, idx) => {
+        channel.visible = enable;
+        
+        // Update UI for each channel
+        const channelItem = document.querySelector(`#channelList .list-item[data-channel-id="${idx}"]`);
+        const eyeBtn = channelItem.querySelector('.eye-btn');
         const icon = eyeBtn.querySelector('i');
         
         eyeBtn.classList.toggle('hidden', !enable);
@@ -489,27 +507,17 @@ function showChannelTools() {
         } else {
             icon.classList.replace('fa-eye', 'fa-eye-slash');
         }
-        
-        // Update all channels in the group
-        group.channels.forEach(channel => {
-            channel.visible = enable;
-        });
     });
 
-    // If there's a selected group, refresh its channel display
-    if (currentState.selectedGroup !== null) {
-        displayGroupChannels(currentState.selectedGroup);
-    }
-
-    // Update stats and mark changes
     updateStats();
     markChanges();
 }
 
 function downloadEditedPlaylist() {
-    // Show processing status
-    const processingStatus = document.getElementById('processingStatus');
-    processingStatus.style.display = 'block';
+    // Get current URL path components
+    const pathComponents = window.location.pathname.split('/');
+    const userId = pathComponents[2];  // Gets user_id from URL
+    const playlistName = decodeURIComponent(pathComponents[4]);  // Gets playlist name from URL
     
     fetch('/download-playlist', {
         method: 'POST',
@@ -517,27 +525,28 @@ function downloadEditedPlaylist() {
             'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-            groups: playlistData.groups
+            name: playlistName,
+            groups: currentState.groups  // Use currentState instead of playlistData
         })
     })
-    .then(response => response.blob())
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.blob();
+    })
     .then(blob => {
-        // Create download link
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'edited_playlist.m3u';
+        a.download = `edited_${playlistName}.m3u`;
         document.body.appendChild(a);
         a.click();
         window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
-        
-        // Hide processing status
-        processingStatus.style.display = 'none';
     })
     .catch(error => {
         console.error('Error downloading playlist:', error);
-        alert('Error downloading playlist');
-        processingStatus.style.display = 'none';
+        alert('Error downloading playlist: ' + error.message);
     });
 }
