@@ -12,7 +12,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from logging.handlers import RotatingFileHandler
 from werkzeug.utils import secure_filename
-from models import db, init_db, User, Playlist, Group, Channel
+from models import db, init_db, User, Playlist
 from auth import auth
 import urllib.parse
 import re
@@ -239,11 +239,6 @@ def process_playlist():
         app.logger.error(f"Error processing playlist: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-    except Exception as e:
-        app.logger.error(f"Error processing playlist: {str(e)}")
-        db.session.rollback()
-        return jsonify({'error': str(e)}), 500
-
 def process_api_line(form_data, m3u_path, epg_path, details):
     try:
         server = form_data['server']
@@ -270,80 +265,6 @@ def process_api_line(form_data, m3u_path, epg_path, details):
     except Exception as e:
         app.logger.error(f"API Line processing error: {str(e)}")
         return False
-
-def process_m3u_to_database(m3u_path, playlist_id):
-    """Process M3U file and store structured data in database"""
-    current_group = None
-    current_channel = None
-    
-    try:
-        # First, clear existing groups and channels for this playlist
-        playlist = Playlist.query.get(playlist_id)
-        if not playlist:
-            raise ValueError(f"Playlist {playlist_id} not found")
-            
-        Group.query.filter_by(playlist_id=playlist_id).delete()
-        db.session.commit()
-        
-        groups_dict = {}  # Keep track of groups to avoid duplicates
-        
-        with open(m3u_path, 'r', encoding='utf-8') as f:
-            for line in f:
-                line = line.strip()
-                if line.startswith('#EXTINF:'):
-                    # Extract channel info
-                    group_match = re.search(r'group-title="([^"]+)"', line)
-                    name_match = re.search(r'tvg-name="([^"]+)"', line)
-                    tvg_id_match = re.search(r'tvg-id="([^"]+)"', line)
-                    
-                    if group_match and name_match:
-                        group_name = group_match.group(1)
-                        
-                        # Get or create group
-                        if group_name not in groups_dict:
-                            group = Group(
-                                name=group_name,
-                                playlist_id=playlist_id,
-                                sort_order=len(groups_dict)
-                            )
-                            db.session.add(group)
-                            db.session.flush()  # Get group ID
-                            groups_dict[group_name] = group
-                        
-                        current_group = groups_dict[group_name]
-                        
-                        # Create channel
-                        current_channel = Channel(
-                            name=name_match.group(1),
-                            group_id=current_group.id,
-                            extinf=line,
-                            tvg_id=tvg_id_match.group(1) if tvg_id_match else None,
-                            sort_order=len(current_group.channels)
-                        )
-                        
-                elif line and not line.startswith('#') and current_channel:
-                    current_channel.url = line
-                    db.session.add(current_channel)
-                    current_channel = None
-                    
-                # Commit every 1000 channels to avoid memory issues
-                if db.session.new:
-                    if len(db.session.new) >= 1000:
-                        db.session.commit()
-        
-        # Final commit
-        db.session.commit()
-        
-        # Update playlist statistics
-        total_channels = Channel.query.join(Group).filter(Group.playlist_id == playlist_id).count()
-        playlist.total_channels = total_channels
-        db.session.commit()
-        
-        return True
-        
-    except Exception as e:
-        db.session.rollback()
-        raise e
 
 def process_m3u_url(form_data, m3u_path, epg_path, details):
     try:
@@ -757,34 +678,69 @@ def edit_playlist(user_id, playlist_name):
         return jsonify({'error': 'Unauthorized'}), 403
 
     try:
-        # Get playlist and its groups/channels from database
-        playlist = Playlist.query.filter_by(
-            user_id=user_id, 
-            name=playlist_name
-        ).first_or_404()
+        # Get the playlist from the database
+        playlist = Playlist.query.filter_by(user_id=user_id, name=playlist_name).first()
+        if not playlist:
+            return jsonify({'error': 'Playlist not found'}), 404
 
-        # Get groups with channels
-        groups = Group.query.filter_by(playlist_id=playlist.id)\
-            .order_by(Group.sort_order)\
-            .all()
+        playlist_dir = playlist_manager.get_playlist_path(user_id, playlist_name)
+        m3u_path = playlist_dir / 'tv.m3u'
 
-        # Format data for frontend
-        groups_data = [{
-            'name': group.name,
-            'channel_count': len(group.channels),
-            'channels': [{
-                'name': channel.name,
-                'extinf': channel.extinf,
-                'url': channel.url,
-                'visible': channel.visible
-            } for channel in sorted(group.channels, key=lambda x: x.sort_order)]
-        } for group in groups]
+        if not m3u_path.exists():
+            return jsonify({'error': 'M3U file not found'}), 404
 
-        return render_template('playlist_editor.html',
+        # Parse M3U file to extract groups and channels
+        groups = defaultdict(list)
+        current_channel = None
+        total_channels = 0
+
+        with open(m3u_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith('#EXTINF:'):
+                    # Extract channel info
+                    group_match = re.search(r'group-title="([^"]+)"', line)
+                    name_match = re.search(r'",(.+)$', line)
+                    tvg_id_match = re.search(r'tvg-id="([^"]+)"', line)
+                    logo_match = re.search(r'tvg-logo="([^"]+)"', line)
+
+                    if group_match and name_match:
+                        current_channel = {
+                            'name': name_match.group(1).strip(),
+                            'group': group_match.group(1),
+                            'tvg_id': tvg_id_match.group(1) if tvg_id_match else '',
+                            'logo': logo_match.group(1) if logo_match else '',
+                            'extinf': line,  # Store original EXTINF line
+                            'visible': True  # Default visibility state
+                        }
+                elif line and not line.startswith('#') and current_channel:
+                    current_channel['url'] = line
+                    groups[current_channel['group']].append(current_channel)
+                    total_channels += 1
+                    current_channel = None
+
+        # Convert to list of groups with channels
+        group_list = [
+            {
+                'name': group_name,
+                'channels': channels,
+                'channel_count': len(channels),
+                'visible': True  # Default visibility state
+            }
+            for group_name, channels in sorted(groups.items())
+        ]
+
+        # Statistics for the editor header
+        stats = {
+            'total_groups': len(group_list),
+            'total_channels': total_channels,
+            'total_visible_channels': total_channels  # Initially all channels are visible
+        }
+
+        return render_template('playlist_editor.html', 
                              playlist=playlist,
-                             groups=groups_data,
-                             total_groups=len(groups_data),
-                             total_channels=sum(len(g['channels']) for g in groups_data))
+                             groups=group_list,
+                             stats=stats)
 
     except Exception as e:
         app.logger.error(f"Error loading playlist editor: {str(e)}")
@@ -797,59 +753,31 @@ def save_edited_playlist(user_id, playlist_name):
         return jsonify({'error': 'Unauthorized'}), 403
 
     try:
-        # Get the base playlist directory
-        playlist_dir = Path(app.static_folder) / 'playlists' / str(user_id) / secure_filename(playlist_name)
+        playlist_dir = playlist_manager.get_playlist_path(user_id, playlist_name)
+        edited_m3u_path = playlist_dir / 'edited.m3u'
         
-        # Ensure the directory exists
-        playlist_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Paths for original and temporary files
-        original_m3u_path = playlist_dir / 'tv.m3u'
-        temp_m3u_path = playlist_dir / 'temp.m3u'
-        backup_m3u_path = playlist_dir / 'tv.m3u.backup'
-
         data = request.json
-        if not data or 'groups' not in data:
-            return jsonify({'error': 'Invalid data format'}), 400
+        groups = data.get('groups', [])
 
-        # Create new M3U content
-        try:
-            with open(temp_m3u_path, 'w', encoding='utf-8') as f:
-                f.write('#EXTM3U\n')
-                for group in data['groups']:
-                    if group.get('visible', True):  # Only include visible groups
-                        for channel in group.get('channels', []):
-                            if channel.get('visible', True):  # Only include visible channels
-                                extinf = channel.get('extinf', '')
-                                url = channel.get('url', '')
-                                if extinf and url:
-                                    f.write(f"{extinf}\n")
-                                    f.write(f"{url}\n")
+        with open(edited_m3u_path, 'w', encoding='utf-8') as f:
+            f.write('#EXTM3U\n')
+            for group in groups:
+                if group['visible']:  # Only include visible groups
+                    for channel in group['channels']:
+                        if channel['visible']:  # Only include visible channels
+                            f.write(f"{channel['extinf']}\n")
+                            f.write(f"{channel['url']}\n")
 
-            # Backup original file if it exists
-            if original_m3u_path.exists():
-                shutil.copy2(original_m3u_path, backup_m3u_path)
+        # Optionally backup original file
+        original_m3u_path = playlist_dir / 'tv.m3u'
+        backup_path = playlist_dir / 'tv.m3u.backup'
+        if original_m3u_path.exists():
+            shutil.copy2(original_m3u_path, backup_path)
+        
+        # Replace original with edited version
+        shutil.move(edited_m3u_path, original_m3u_path)
 
-            # Replace original with new version
-            shutil.move(temp_m3u_path, original_m3u_path)
-
-            # Update database
-            playlist = Playlist.query.filter_by(
-                user_id=user_id,
-                name=playlist_name
-            ).first()
-
-            if playlist:
-                playlist.last_sync = datetime.utcnow()
-                db.session.commit()
-
-            return jsonify({'message': 'Playlist saved successfully'})
-
-        except IOError as e:
-            app.logger.error(f"IO Error while saving playlist: {str(e)}")
-            if temp_m3u_path.exists():
-                temp_m3u_path.unlink()  # Clean up temp file if it exists
-            return jsonify({'error': f'Failed to save playlist: {str(e)}'}), 500
+        return jsonify({'message': 'Playlist saved successfully'})
 
     except Exception as e:
         app.logger.error(f"Error saving edited playlist: {str(e)}")
@@ -884,4 +812,3 @@ if __name__ == '__main__':
         )
     except Exception as e:
         app.logger.error(f"Failed to start application: {str(e)}")
-        raise
