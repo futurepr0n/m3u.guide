@@ -810,31 +810,59 @@ def save_edited_playlist(user_id, playlist_name):
         return jsonify({'error': 'Unauthorized'}), 403
 
     try:
-        playlist_dir = playlist_manager.get_playlist_path(user_id, playlist_name)
-        edited_m3u_path = playlist_dir / 'edited.m3u'
+        # Get the base playlist directory
+        playlist_dir = Path(app.static_folder) / 'playlists' / str(user_id) / secure_filename(playlist_name)
         
-        data = request.json
-        groups = data.get('groups', [])
-
-        with open(edited_m3u_path, 'w', encoding='utf-8') as f:
-            f.write('#EXTM3U\n')
-            for group in groups:
-                if group['visible']:  # Only include visible groups
-                    for channel in group['channels']:
-                        if channel['visible']:  # Only include visible channels
-                            f.write(f"{channel['extinf']}\n")
-                            f.write(f"{channel['url']}\n")
-
-        # Optionally backup original file
+        # Ensure the directory exists
+        playlist_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Paths for original and temporary files
         original_m3u_path = playlist_dir / 'tv.m3u'
-        backup_path = playlist_dir / 'tv.m3u.backup'
-        if original_m3u_path.exists():
-            shutil.copy2(original_m3u_path, backup_path)
-        
-        # Replace original with edited version
-        shutil.move(edited_m3u_path, original_m3u_path)
+        temp_m3u_path = playlist_dir / 'temp.m3u'
+        backup_m3u_path = playlist_dir / 'tv.m3u.backup'
 
-        return jsonify({'message': 'Playlist saved successfully'})
+        data = request.json
+        if not data or 'groups' not in data:
+            return jsonify({'error': 'Invalid data format'}), 400
+
+        # Create new M3U content
+        try:
+            with open(temp_m3u_path, 'w', encoding='utf-8') as f:
+                f.write('#EXTM3U\n')
+                for group in data['groups']:
+                    if group.get('visible', True):  # Only include visible groups
+                        for channel in group.get('channels', []):
+                            if channel.get('visible', True):  # Only include visible channels
+                                extinf = channel.get('extinf', '')
+                                url = channel.get('url', '')
+                                if extinf and url:
+                                    f.write(f"{extinf}\n")
+                                    f.write(f"{url}\n")
+
+            # Backup original file if it exists
+            if original_m3u_path.exists():
+                shutil.copy2(original_m3u_path, backup_m3u_path)
+
+            # Replace original with new version
+            shutil.move(temp_m3u_path, original_m3u_path)
+
+            # Update database
+            playlist = Playlist.query.filter_by(
+                user_id=user_id,
+                name=playlist_name
+            ).first()
+
+            if playlist:
+                playlist.last_sync = datetime.utcnow()
+                db.session.commit()
+
+            return jsonify({'message': 'Playlist saved successfully'})
+
+        except IOError as e:
+            app.logger.error(f"IO Error while saving playlist: {str(e)}")
+            if temp_m3u_path.exists():
+                temp_m3u_path.unlink()  # Clean up temp file if it exists
+            return jsonify({'error': f'Failed to save playlist: {str(e)}'}), 500
 
     except Exception as e:
         app.logger.error(f"Error saving edited playlist: {str(e)}")

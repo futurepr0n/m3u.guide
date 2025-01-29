@@ -294,38 +294,61 @@ function saveChanges() {
         return;
     }
 
+    // Show loading state
+    const saveButton = document.querySelector('.btn-primary');
+    const originalText = saveButton.textContent;
+    saveButton.textContent = 'Saving...';
+    saveButton.disabled = true;
+
+    // Prepare data for saving
     const data = {
         groups: currentState.groups.map(group => ({
             name: group.name,
-            visible: group.visible,
+            visible: group.visible !== false, // Default to true if undefined
             channels: group.channels.map(channel => ({
                 extinf: channel.extinf,
                 url: channel.url,
-                visible: channel.visible
+                visible: channel.visible !== false // Default to true if undefined
             }))
         }))
     };
 
-    fetch(window.location.href + '/save', {
+    // Get the current URL without the '/save' part
+    const baseUrl = window.location.href.replace(/\/$/, '');
+    const saveUrl = `${baseUrl}/save`;
+
+    fetch(saveUrl, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
         },
         body: JSON.stringify(data)
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            return response.json().then(err => Promise.reject(err));
+        }
+        return response.json();
+    })
     .then(result => {
         if (result.message) {
-            alert('Changes saved successfully');
+            // Success case
             currentState.changes = false;
-            document.querySelector('.btn-primary').classList.remove('btn-warning');
             currentState.originalData = JSON.parse(JSON.stringify(currentState.groups));
+            saveButton.classList.remove('btn-warning');
+            alert('Changes saved successfully');
         } else {
             throw new Error(result.error || 'Failed to save changes');
         }
     })
     .catch(error => {
-        alert('Error saving changes: ' + error.message);
+        console.error('Save error:', error);
+        alert('Error saving changes: ' + (error.message || 'Unknown error'));
+    })
+    .finally(() => {
+        // Reset button state
+        saveButton.textContent = originalText;
+        saveButton.disabled = false;
     });
 }
 
