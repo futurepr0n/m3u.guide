@@ -230,27 +230,14 @@ def process_playlist():
 
         if not success:
             return jsonify({'error': 'Failed to process playlist'}), 500
-        
-        # Add playlist to database
-        playlist = Playlist(
-            name=name,
-            source=source,
-            user_id=user_id,
-            details=playlist_data.get('details', {}),
-            last_sync=datetime.utcnow()
-        )
-        db.session.add(playlist)
-        db.session.flush()  # Get the playlist ID
-
-        # Process M3U file into database
-        process_m3u_to_database(m3u_path, playlist.id)
-        
-        db.session.commit()
-        #return jsonify({'message': 'Playlist processed successfully'})
 
         # Add playlist to database
         playlist_manager.add_playlist(user_id, playlist_data)
         return jsonify({'message': 'Playlist processed successfully'})
+
+    except Exception as e:
+        app.logger.error(f"Error processing playlist: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
     except Exception as e:
         app.logger.error(f"Error processing playlist: {str(e)}")
