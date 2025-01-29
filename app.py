@@ -812,33 +812,33 @@ def save_edited_playlist(user_id, playlist_name):
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/download-playlist', methods=['POST'])
-def download_playlist():
-    if 'user_id' not in session:
-        return jsonify({'error': 'User not logged in'}), 403
+@app.route('/playlist/<int:user_id>/<path:playlist_name>/download', methods=['POST'])
+def download_playlist(user_id, playlist_name):
+    if 'user_id' not in session or session['user_id'] != user_id:
+        return jsonify({'error': 'Unauthorized'}), 403
         
     try:
-        data = request.json
-        playlist = Playlist.query.filter_by(
-            user_id=session['user_id'],
-            name=data.get('name')
-        ).first()
-        
+        # Get the playlist from the database
+        playlist = Playlist.query.filter_by(user_id=user_id, name=playlist_name).first()
         if not playlist:
             return jsonify({'error': 'Playlist not found'}), 404
-            
+
+        data = request.json
+        if not data or 'groups' not in data:
+            return jsonify({'error': 'Invalid data format'}), 400
+
+        # Create M3U content
         m3u_content = "#EXTM3U\n"
-        
-        for group in playlist.groups:
-            if group.visible:
-                for channel in group.channels:
-                    if channel.visible:
-                        m3u_content += f"{channel.extinf}\n"
-                        m3u_content += f"{channel.url}\n"
-        
+        for group in data['groups']:
+            if group.get('visible', True):
+                for channel in group.get('channels', []):
+                    if channel.get('visible', True):
+                        m3u_content += f"{channel['extinf']}\n"
+                        m3u_content += f"{channel['url']}\n"
+
         response = make_response(m3u_content)
         response.headers['Content-Type'] = 'application/x-mpegurl'
-        response.headers['Content-Disposition'] = 'attachment; filename=edited_playlist.m3u'
+        response.headers['Content-Disposition'] = f'attachment; filename=edited_{secure_filename(playlist_name)}.m3u'
         
         return response
         
