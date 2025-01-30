@@ -517,13 +517,13 @@ function downloadEditedPlaylist() {
     // Get current URL path components
     const pathComponents = window.location.pathname.split('/');
     const userId = pathComponents[2];  // Gets user_id from URL
-    const playlistName = decodeURIComponent(pathComponents[4]);  // Gets playlist name from URL
+    const playlistName = decodeURIComponent(pathComponents[3]);  // Gets playlist name without '/edit'
     
-    // Construct the correct download URL to match the edited playlist path
-    const downloadUrl = `/static/playlists/${userId}/${encodeURIComponent(playlistName)}_edit/${playlistName}.m3u`;
+    // Construct the correct download URL for the edited m3u file
+    const downloadUrl = `/playlist/${userId}/${playlistName}_edit/tv.m3u`;
     
     fetch(downloadUrl, {
-        method: 'GET',  // Changed to GET since we're directly accessing the file
+        method: 'GET',
         headers: {
             'Content-Type': 'application/json',
         }
@@ -538,7 +538,7 @@ function downloadEditedPlaylist() {
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `${playlistName}_edit.m3u`;  // Matches the save path format
+        a.download = `${playlistName}_edit.m3u`;
         document.body.appendChild(a);
         a.click();
         window.URL.revokeObjectURL(url);
