@@ -818,27 +818,20 @@ def download_playlist(user_id, playlist_name):
         return jsonify({'error': 'Unauthorized'}), 403
         
     try:
-        # Get the playlist from the database
-        playlist = Playlist.query.filter_by(user_id=user_id, name=playlist_name).first()
-        if not playlist:
-            return jsonify({'error': 'Playlist not found'}), 404
+        # Construct the path to the edited m3u file
+        playlist_dir = Path(app.static_folder) / 'playlists' / str(user_id) / f"{secure_filename(playlist_name)}_edit"
+        m3u_path = playlist_dir / 'tv.m3u'
+        
+        if not m3u_path.exists():
+            return jsonify({'error': 'Playlist file not found'}), 404
 
-        data = request.json
-        if not data or 'groups' not in data:
-            return jsonify({'error': 'Invalid data format'}), 400
-
-        # Create M3U content
-        m3u_content = "#EXTM3U\n"
-        for group in data['groups']:
-            if group.get('visible', True):
-                for channel in group.get('channels', []):
-                    if channel.get('visible', True):
-                        m3u_content += f"{channel['extinf']}\n"
-                        m3u_content += f"{channel['url']}\n"
+        # Read and return the actual file
+        with open(m3u_path, 'r', encoding='utf-8') as f:
+            m3u_content = f.read()
 
         response = make_response(m3u_content)
         response.headers['Content-Type'] = 'application/x-mpegurl'
-        response.headers['Content-Disposition'] = f'attachment; filename=edited_{secure_filename(playlist_name)}.m3u'
+        response.headers['Content-Disposition'] = f'attachment; filename=playlists/{user_id}/{secure_filename(playlist_name)}_edit/tv.m3u'
         
         return response
         
