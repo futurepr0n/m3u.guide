@@ -519,14 +519,16 @@ function downloadEditedPlaylist() {
     const userId = pathComponents[2];  // Gets user_id from URL
     const playlistName = decodeURIComponent(pathComponents[3]);  // Gets playlist name without '/edit'
     
-    // Construct the correct download URL for the edited m3u file
-    const downloadUrl = `/playlist/${userId}/${playlistName}_edit/tv.m3u`;
+    const downloadUrl = `/playlist/${userId}/${playlistName}/download`;
     
     fetch(downloadUrl, {
-        method: 'GET',
+        method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-        }
+        },
+        body: JSON.stringify({
+            groups: currentState.groups
+        })
     })
     .then(response => {
         if (!response.ok) {
@@ -538,7 +540,8 @@ function downloadEditedPlaylist() {
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `${playlistName}_edit.m3u`;
+        // Use the correct filename structure
+        a.download = `playlists/${userId}/${playlistName}_edit/tv.m3u`;
         document.body.appendChild(a);
         a.click();
         window.URL.revokeObjectURL(url);
