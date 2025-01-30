@@ -126,7 +126,7 @@ function submitM3uFile() {
     submitPlaylist(formData);
 }
 
-function submitPlaylist(formData) {
+submitPlaylist(formData) {
     $.modal.close();
     $('#processingStatus').show();
     
@@ -140,7 +140,11 @@ function submitPlaylist(formData) {
     .done(function(response) {
         $('#processingStatus').hide();
         loadPlaylists();
-        alert('Playlist processed successfully');
+        if (response.analyzed) {
+            alert('Playlist processed and analyzed successfully');
+        } else {
+            alert('Playlist processed successfully but analysis failed. You can try analyzing again manually.');
+        }
     })
     .fail(function(error) {
         $('#processingStatus').hide();

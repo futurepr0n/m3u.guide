@@ -233,11 +233,84 @@ def process_playlist():
 
         # Add playlist to database
         playlist_manager.add_playlist(user_id, playlist_data)
-        return jsonify({'message': 'Playlist processed successfully'})
+
+        # Automatically run analysis
+        try:
+            analyze_playlist_internal(user_id, name)
+            return jsonify({
+                'message': 'Playlist processed and analyzed successfully',
+                'analyzed': True
+            })
+        except Exception as analyze_error:
+            app.logger.error(f"Error during automatic analysis: {str(analyze_error)}")
+            return jsonify({
+                'message': 'Playlist processed successfully but analysis failed',
+                'analyzed': False
+            })
 
     except Exception as e:
         app.logger.error(f"Error processing playlist: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
+# Create a new internal function for analysis
+def analyze_playlist_internal(user_id, playlist_name):
+    """Internal function to analyze playlist without HTTP request handling"""
+    playlist = Playlist.query.filter_by(user_id=user_id, name=playlist_name).first()
+    if not playlist:
+        raise ValueError('Playlist not found')
+
+    playlist_dir = BASE_DIR / 'static' / 'playlists' / str(user_id) / secure_filename(playlist_name)
+    m3u_path = playlist_dir / 'tv.m3u'
+    epg_path = playlist_dir / 'epg.xml'
+    analysis_dir = playlist_dir / 'analysis'
+    analysis_dir.mkdir(exist_ok=True)
+
+    analyzer_script = BASE_DIR / 'm3u_analyzer_beefy.py'
+
+    if not analyzer_script.exists():
+        raise FileNotFoundError('Analyzer script not found')
+
+    if not (m3u_path.exists() and epg_path.exists()):
+        raise FileNotFoundError('Required files not found for analysis')
+
+    # Run analyzer script
+    result = subprocess.run(
+        ['python3', str(analyzer_script), str(m3u_path), str(epg_path)],
+        cwd=str(analysis_dir),
+        capture_output=True,
+        text=True,
+        check=True
+    )
+
+    # Process command data and update playlist just like in analyze_playlist route
+    command_file = analysis_dir / 'command.json'
+    if command_file.exists():
+        with open(command_file, 'r') as f:
+            command_data = json.load(f)
+
+        # Update playlist with statistics and command
+        playlist.total_channels = command_data.get('total_channels', 0)
+        playlist.total_epg_matches = command_data.get('total_epg_matches', 0)
+        playlist.total_movies = command_data.get('total_movies', 0)
+        playlist.total_series = command_data.get('total_series', 0)
+        playlist.total_unmatched = command_data.get('total_unmatched', 0)
+
+        # Build the m3u editor command with local paths
+        channel_ids = command_data.get('channel_ids', '')
+        if channel_ids:
+            channel_list = channel_ids.split(',')
+            formatted_channel_ids = "'" + "','".join(channel_list) + "'"
+            
+            playlist.m3u_editor_command = (
+                f'python ./m3u-epg-editor-py3.py '
+                f'-m="file://{str(m3u_path)}" '
+                f'-e="file://{str(epg_path)}" '
+                f'-g="{formatted_channel_ids}" '
+                f'-d="{str(playlist_dir / "optimized")}" '
+                '-gm=keep -r=12 -f=cleaned'
+            )
+        
+        db.session.commit()
 
 def process_api_line(form_data, m3u_path, epg_path, details):
     try:
