@@ -459,61 +459,32 @@ def analyze_playlist():
             playlist.total_series = command_data.get('total_series', 0)
             playlist.total_unmatched = command_data.get('total_unmatched', 0)
 
-
-            # Build the m3u editor command
+            # Build the m3u editor command with local paths
             channel_ids = command_data.get('channel_ids', '')
             if channel_ids:
                 channel_list = channel_ids.split(',')
                 formatted_channel_ids = "'" + "','".join(channel_list) + "'"
-                # Build URLs
-                base_url = "http://m3u-toolkit.futurepr0n.com"
-                m3u_url = f"{base_url}/static/playlists/{user_id}/{secure_filename(playlist_name)}/tv.m3u"
-                epg_url = f"{base_url}/static/playlists/{user_id}/{secure_filename(playlist_name)}/epg.xml"
                 
                 playlist.m3u_editor_command = (
                     f'python ./m3u-epg-editor-py3.py '
-                    f'-m="{m3u_url}" '  # Use URL instead of file path
-                    f'-e="{epg_url}" '  # Use URL instead of file path
+                    f'-m="{str(m3u_path)}" '
+                    f'-e="{str(epg_path)}" '
                     f'-g="{formatted_channel_ids}" '
                     f'-d="{str(playlist_dir / "optimized")}" '
                     '-gm=keep -r=12 -f=cleaned'
                 )
             
-            
             db.session.commit()
-        
-        
-        
-        # Extract statistics from the generated analysis file
+
+        # Check for the analysis file
         analysis_file = analysis_dir / 'content_analysis_matched.html'
         if not analysis_file.exists():
             return jsonify({'error': 'Analysis file was not generated'}), 500
 
-        # Parse the analysis file to extract statistics
-        with open(analysis_file, 'r') as f:
-            content = f.read()
-            
-        # Extract statistics using regex
-        import re
-        total_channels = int(re.search(r'Total Channels with TVG-ID: (\d+)', content).group(1))
-        total_epg_matches = int(re.search(r'Channels with EPG Matches: (\d+)', content).group(1))
-        total_movies = int(re.search(r'Movies without TVG-ID: (\d+)', content).group(1))
-        total_series = int(re.search(r'Series without TVG-ID: (\d+)', content).group(1))
-        total_unmatched = int(re.search(r'Unmatched Content without TVG-ID: (\d+)', content).group(1))
-        
-        # Update playlist with statistics
-        playlist.total_channels = total_channels
-        playlist.total_epg_matches = total_epg_matches
-        playlist.total_movies = total_movies
-        playlist.total_series = total_series
-        playlist.total_unmatched = total_unmatched
-        
-        db.session.commit()
-            
         return jsonify({
             'message': 'Analysis completed successfully',
             'analysis_url': url_for('static', filename=f'playlists/{user_id}/{secure_filename(playlist_name)}/analysis/content_analysis_matched.html'),
-            'command': command_data.get('m3u_editor_command', '') if command_file.exists() else None
+            'command': playlist.m3u_editor_command
         })
 
     except subprocess.CalledProcessError as e:
@@ -544,35 +515,32 @@ def optimize_playlist():
             app.logger.error("No m3u_editor_command found in playlist")
             return jsonify({'error': 'Please run analysis first'}), 400
 
-        # Get the playlist directory
+        # Get the playlist directory and files
         playlist_dir = BASE_DIR / 'static' / 'playlists' / str(user_id) / secure_filename(playlist_name)
+        m3u_path = playlist_dir / 'tv.m3u'
+        epg_path = playlist_dir / 'epg.xml'
         editor_script = BASE_DIR / 'm3u-epg-editor-py3.py'
         optimized_dir = playlist_dir / 'optimized'
-        optimized_dir.mkdir(exist_ok=True)
+        optimized_dir.mkdir(exist_ok=True, parents=True)
 
-        # Extract values from command using regex
-        m3u_match = re.search(r'-m="([^"]+)"', playlist.m3u_editor_command)
-        epg_match = re.search(r'-e="([^"]+)"', playlist.m3u_editor_command)
+        # Just extract the groups from the command - we'll use local paths for files
         groups_match = re.search(r'-g="([^"]+)"', playlist.m3u_editor_command)
-
-        if not all([m3u_match, epg_match, groups_match]):
-            app.logger.error("Failed to extract required values from command")
+        if not groups_match:
+            app.logger.error("Failed to extract groups from command")
             return jsonify({'error': 'Invalid command format'}), 400
 
-        m3u_url = m3u_match.group(1)
-        epg_url = epg_match.group(1)
         groups = groups_match.group(1)
 
         # Use python from virtual environment if available
         venv_python = BASE_DIR / 'venv' / 'bin' / 'python3'
         python_executable = str(venv_python) if venv_python.exists() else 'python3'
 
-        # Build command parts without extra quotes
+        # Build command parts with local file paths
         command_parts = [
             python_executable,
             str(editor_script),
-            f'-m={m3u_url}',
-            f'-e={epg_url}',
+            f'-m={str(m3u_path)}',
+            f'-e={str(epg_path)}',
             f'-g={groups}',
             f'-d={str(optimized_dir)}',
             '-gm=keep',
@@ -605,6 +573,11 @@ def optimize_playlist():
             app.logger.error(f"Command stdout: {e.stdout}")
             app.logger.error(f"Command stderr: {e.stderr}")
             raise
+
+        # Verify output files were created
+        if not (optimized_dir / 'cleaned.m3u8').exists() or not (optimized_dir / 'cleaned.xml').exists():
+            app.logger.error("Output files were not created")
+            return jsonify({'error': 'Output files were not created'}), 500
 
         return jsonify({
             'message': 'Playlist optimization completed successfully',
