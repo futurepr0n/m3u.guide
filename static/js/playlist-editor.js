@@ -516,19 +516,17 @@ function toggleAllChannels(enable) {
 function downloadEditedPlaylist() {
     // Get current URL path components
     const pathComponents = window.location.pathname.split('/');
-    const userId = pathComponents[2];  // Gets user_id from URL
-    const playlistName = decodeURIComponent(pathComponents[3]);  // Gets playlist name without '/edit'
+    const userId = pathComponents[2];
+    const playlistName = decodeURIComponent(pathComponents[3]);
     
-    const downloadUrl = `/playlist/${userId}/${playlistName}/download`;
+    // Update the URL to match the actual file location
+    const downloadUrl = `/static/playlists/${userId}/${playlistName}_edit/tv.m3u`;
     
     fetch(downloadUrl, {
-        method: 'POST',
+        method: 'GET',  // Changed to GET since we're directly accessing the file
         headers: {
             'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            groups: currentState.groups
-        })
+        }
     })
     .then(response => {
         if (!response.ok) {
@@ -540,8 +538,7 @@ function downloadEditedPlaylist() {
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        // Use the correct filename structure
-        a.download = `playlists/${userId}/${playlistName}_edit/tv.m3u`;
+        a.download = 'tv.m3u';  // Simplified download filename
         document.body.appendChild(a);
         a.click();
         window.URL.revokeObjectURL(url);
