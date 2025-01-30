@@ -467,8 +467,8 @@ def analyze_playlist():
                 
                 playlist.m3u_editor_command = (
                     f'python ./m3u-epg-editor-py3.py '
-                    f'-m="{str(m3u_path)}" '
-                    f'-e="{str(epg_path)}" '
+                    f'-m="file://{str(m3u_path)}" '
+                    f'-e="file://{str(epg_path)}" '
                     f'-g="{formatted_channel_ids}" '
                     f'-d="{str(playlist_dir / "optimized")}" '
                     '-gm=keep -r=12 -f=cleaned'
@@ -536,11 +536,12 @@ def optimize_playlist():
         python_executable = str(venv_python) if venv_python.exists() else 'python3'
 
         # Build command parts with local file paths
+        # Build command parts with local file paths
         command_parts = [
             python_executable,
             str(editor_script),
-            f'-m={str(m3u_path)}',
-            f'-e={str(epg_path)}',
+            f'-m=file://{str(m3u_path)}',  # Add file:// protocol
+            f'-e=file://{str(epg_path)}',   # Add file:// protocol
             f'-g={groups}',
             f'-d={str(optimized_dir)}',
             '-gm=keep',
