@@ -126,7 +126,7 @@ function submitM3uFile() {
     submitPlaylist(formData);
 }
 
-submitPlaylist(formData) {
+function submitPlaylist(formData) {  // Correct function declaration
     $.modal.close();
     $('#processingStatus').show();
     
