@@ -44,14 +44,28 @@ function loadPlaylists() {
                 actions.append(`<button class="btn process-btn" onclick="processPlaylist('${playlist.name}')">Process</button> `);
                 actions.append(`<button class="btn analyze-btn" onclick="analyzePlaylist('${playlist.name}')">Analyze</button> `);
                 
-                // Content Analysis button
+                // Enhanced Content Analysis button (primary)
                 actions.append(`
                     <button class="btn content-analysis-btn" 
-                            onclick="viewContentAnalysis('${playlist.name}')"
-                            ${playlist.has_analysis ? '' : 'disabled'}>
-                        Content Analysis
+                            onclick="viewEnhancedAnalysis('${playlist.name}')"
+                            ${playlist.has_analysis ? '' : 'disabled'}
+                            title="Advanced content analysis with search and performance optimizations">
+                        📊 Content Analysis
                     </button>
                 `);
+                
+                // Original Content Analysis button (hidden by default, admin access)
+                if (window.location.search.includes('admin=true')) {
+                    actions.append(`
+                        <button class="btn original-analysis-btn" 
+                                onclick="viewOriginalAnalysis('${playlist.name}')"
+                                ${playlist.has_analysis ? '' : 'disabled'}
+                                title="Classic content analysis view"
+                                style="background: #95a5a6; color: white; font-size: 0.85em;">
+                            📄 Classic View
+                        </button>
+                    `);
+                }
                 
                 // Optimize button with data attributes
                 actions.append(`
@@ -192,11 +206,13 @@ function analyzePlaylist(name) {
         $('#processingStatus').hide();
         
         // Find the buttons for this playlist
-        const contentAnalysisBtn = $(`button.content-analysis-btn[onclick="viewContentAnalysis('${name}')"]`);
+        const contentAnalysisBtn = $(`button.content-analysis-btn[onclick="viewEnhancedAnalysis('${name}')"]`);
+        const originalAnalysisBtn = $(`button.original-analysis-btn[onclick="viewOriginalAnalysis('${name}')"]`);
         const optimizeBtn = $(`button.optimize-btn[onclick="optimizePlaylist('${name}')"]`);
         
-        // Enable both buttons
+        // Enable all buttons
         contentAnalysisBtn.prop('disabled', false);
+        originalAnalysisBtn.prop('disabled', false);
         optimizeBtn.prop('disabled', false);
         
         // Store any command data
@@ -215,16 +231,29 @@ function analyzePlaylist(name) {
     });
 }
 
-function viewContentAnalysis(name) {
+function viewEnhancedAnalysis(name) {
     if (!currentUserId) {
         console.error('User ID not found');
         return;
     }
     
-    // Construct the correct URL to the analysis file
+    // Construct the URL to the enhanced analysis
+    const analysisUrl = `/demo/enhanced/${currentUserId}/${encodeURIComponent(name)}`;
+    
+    // Navigate to the enhanced analysis page
+    window.location.href = analysisUrl;
+}
+
+function viewOriginalAnalysis(name) {
+    if (!currentUserId) {
+        console.error('User ID not found');
+        return;
+    }
+    
+    // Construct the correct URL to the original analysis file
     const analysisUrl = `/static/playlists/${currentUserId}/${encodeURIComponent(name)}/analysis/content_analysis_matched.html`;
     
-    // Navigate to the analysis page
+    // Navigate to the original analysis page
     window.location.href = analysisUrl;
 }
 

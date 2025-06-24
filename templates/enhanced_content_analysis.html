@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enhanced Content Analysis Demo - M3U.Guide</title>
+    <style>
+        /* Base styles from original analysis pages */
+        body { 
+            font-family: Arial, sans-serif; 
+            line-height: 1.6; 
+            margin: 0; 
+            padding: 20px; 
+            background: #f5f5f5; 
+        }
+        .container { 
+            max-width: 1200px; 
+            margin: 0 auto; 
+        }
+        .header { 
+            background: #2c3e50; 
+            color: white; 
+            padding: 20px; 
+            margin-bottom: 20px; 
+            border-radius: 5px; 
+        }
+        
+        /* Demo banner styles */
+        .demo-banner {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 20px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+            border-left: 5px solid #4CAF50;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .demo-banner h2 {
+            margin: 0 0 10px 0;
+            font-size: 1.5em;
+        }
+        .demo-banner p {
+            margin: 0;
+            opacity: 0.9;
+        }
+        .demo-banner a {
+            color: #FFE082;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        .demo-banner a:hover {
+            text-decoration: underline;
+        }
+        
+        /* Analysis navigation tabs */
+        .analysis-nav {
+            background: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+        .analysis-nav ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            display: flex;
+            flex-wrap: wrap;
+        }
+        .analysis-nav li {
+            flex: 1;
+            min-width: 150px;
+        }
+        .analysis-nav a {
+            display: block;
+            padding: 15px 20px;
+            text-decoration: none;
+            color: #2c3e50;
+            background: #ecf0f1;
+            border-right: 1px solid #bdc3c7;
+            transition: all 0.3s ease;
+            text-align: center;
+        }
+        .analysis-nav a:hover {
+            background: #3498db;
+            color: white;
+        }
+        .analysis-nav a.active {
+            background: #2c3e50;
+            color: white;
+        }
+        
+        /* Content frame for analysis pages */
+        .content-frame {
+            background: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            position: relative;
+            height: auto;
+        }
+        .content-frame iframe {
+            width: 100%;
+            height: 100vh;
+            border: none;
+            border-radius: 5px;
+        }
+        
+        /* Loading state */
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 200px;
+            color: #7f8c8d;
+        }
+        .loading::after {
+            content: '';
+            width: 20px;
+            height: 20px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 10px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* Feature showcase */
+        .feature-showcase {
+            background: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .feature-showcase h3 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+        }
+        .feature-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+        }
+        .feature-item {
+            background: #ecf0f1;
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 4px solid #3498db;
+        }
+        .feature-item strong {
+            color: #2c3e50;
+        }
+        
+        /* Responsive design */
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+            .analysis-nav ul {
+                flex-direction: column;
+            }
+            .analysis-nav a {
+                border-right: none;
+                border-bottom: 1px solid #bdc3c7;
+            }
+            .feature-list {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header Banner -->
+        <div class="demo-banner">
+            <h2>📊 Enhanced Content Analysis</h2>
+            <p>Advanced content analysis with collapsible groups, search functionality, and optimized performance.</p>
+            <div style="margin-top: 10px;">
+                <a href="/" onclick="cleanupAndNavigate('/')" class="nav-button" style="background: #2ecc71; color: white; padding: 8px 16px; text-decoration: none; border-radius: 5px; margin-right: 10px;">
+                    🏠 Back to Dashboard
+                </a>
+                <a href="/static/playlists/{{ user_id }}/{{ playlist_name }}/analysis/" onclick="cleanupAndNavigate('/static/playlists/{{ user_id }}/{{ playlist_name }}/analysis/')" class="nav-button" style="background: #95a5a6; color: white; padding: 8px 16px; text-decoration: none; border-radius: 5px;">
+                    📄 Classic View
+                </a>
+            </div>
+            <div style="font-size: 0.85em; opacity: 0.9; margin-top: 8px;">
+                📺 Display: <span id="height-indicator">Loading...</span> | 
+                💾 Memory: <span id="memory-indicator">Calculating...</span>
+            </div>
+        </div>
+
+        <!-- Header -->
+        <div class="header">
+            <h1>Content Analysis</h1>
+            <p>Playlist: <strong>{{ playlist_name }}</strong> | User: {{ user_id }}</p>
+            <p>Enhanced UI with performance optimizations and advanced navigation</p>
+        </div>
+
+        <!-- Feature Showcase -->
+        <div class="feature-showcase">
+            <h3>✨ Enhanced Features</h3>
+            <div class="feature-list">
+                <div class="feature-item">
+                    <strong>🔍 Smart Search</strong><br>
+                    Search across all content with real-time filtering
+                </div>
+                <div class="feature-item">
+                    <strong>📁 Collapsible Groups</strong><br>
+                    Auto-collapse large groups for better performance
+                </div>
+                <div class="feature-item">
+                    <strong>⚡ Optimized Performance</strong><br>
+                    Efficient rendering for large datasets
+                </div>
+                <div class="feature-item">
+                    <strong>📱 Responsive Design</strong><br>
+                    Optimized for desktop, tablet, and mobile
+                </div>
+            </div>
+        </div>
+
+        <!-- Analysis Navigation -->
+        <div class="analysis-nav">
+            <ul>
+                {% if analysis_files.matched %}
+                <li><a href="#" onclick="loadAnalysisPage('matched')" class="nav-link active" data-target="matched">📺 Live TV with EPG</a></li>
+                {% endif %}
+                {% if analysis_files.movies %}
+                <li><a href="#" onclick="loadAnalysisPage('movies')" class="nav-link" data-target="movies">🎬 Movies</a></li>
+                {% endif %}
+                {% if analysis_files.series %}
+                <li><a href="#" onclick="loadAnalysisPage('series')" class="nav-link" data-target="series">📺 TV Series</a></li>
+                {% endif %}
+                {% if analysis_files.unmatched %}
+                <li><a href="#" onclick="loadAnalysisPage('unmatched')" class="nav-link" data-target="unmatched">❓ Unmatched</a></li>
+                {% endif %}
+                {% if analysis_files.no_tvg %}
+                <li><a href="#" onclick="loadAnalysisPage('no_tvg')" class="nav-link" data-target="no_tvg">🔍 No TVG ID</a></li>
+                {% endif %}
+            </ul>
+        </div>
+
+        <!-- Content Frame -->
+        <div class="content-frame">
+            <div id="content-container">
+                <div class="loading">Loading enhanced analysis...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Demo page functionality
+        let currentPage = 'matched';
+        const availableFiles = {
+            {% for key, value in analysis_files.items() %}
+            "{{ key }}": "{{ value }}",
+            {% endfor %}
+        };
+        
+        function loadAnalysisPage(pageType) {
+            // Update active nav
+            document.querySelectorAll('.nav-link').forEach(link => {
+                link.classList.remove('active');
+            });
+            document.querySelector(`[data-target="${pageType}"]`).classList.add('active');
+            
+            // Show loading
+            document.getElementById('content-container').innerHTML = '<div class="loading">Loading enhanced analysis...</div>';
+            
+            // Load the analysis page with enhancements
+            currentPage = pageType;
+            
+            // Simulate loading and inject enhanced content
+            setTimeout(() => {
+                loadEnhancedContent(pageType);
+            }, 500);
+        }
+        
+        function loadEnhancedContent(pageType) {
+            const filePath = availableFiles[pageType];
+            if (!filePath) {
+                document.getElementById('content-container').innerHTML = 
+                    '<div style="padding: 40px; text-align: center; color: #e74c3c;">Analysis file not found</div>';
+                return;
+            }
+            
+            // Create iframe to load original analysis with enhancements
+            const iframe = document.createElement('iframe');
+            iframe.src = `/static/playlists/{{ user_id }}/{{ playlist_name }}/analysis/${getAnalysisFileName(pageType)}`;
+            iframe.onload = () => {
+                // Inject enhancement scripts into iframe
+                injectEnhancements(iframe);
+            };
+            
+            document.getElementById('content-container').innerHTML = '';
+            document.getElementById('content-container').appendChild(iframe);
+        }
+        
+        function getAnalysisFileName(pageType) {
+            const fileMap = {
+                'matched': 'content_analysis_matched.html',
+                'movies': 'content_analysis_movies.html', 
+                'series': 'content_analysis_series.html',
+                'unmatched': 'content_analysis_unmatched.html',
+                'no_tvg': 'content_analysis_unmatched_no_tvg.html'
+            };
+            return fileMap[pageType] || 'content_analysis_matched.html';
+        }
+        
+        function injectEnhancements(iframe) {
+            try {
+                const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                
+                // Inject collapsible groups script
+                const script = iframeDoc.createElement('script');
+                script.src = '/static/js/content-collapse.js';
+                iframeDoc.head.appendChild(script);
+                
+                // Inject enhancement CSS
+                const link = iframeDoc.createElement('link');
+                link.rel = 'stylesheet';
+                link.href = '/static/css/content-collapse.css';
+                iframeDoc.head.appendChild(link);
+                
+                // Add demo indicator
+                const banner = iframeDoc.createElement('div');
+                banner.innerHTML = `
+                    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                                color: white; padding: 10px; margin: 10px 0; border-radius: 5px; 
+                                text-align: center; font-weight: bold;">
+                        🚀 Enhanced UI Demo Active - Groups auto-collapsed for performance
+                    </div>
+                `;
+                iframeDoc.body.insertBefore(banner, iframeDoc.body.firstChild);
+                
+            } catch (e) {
+                console.log('Cross-origin restrictions prevent iframe enhancement');
+                // Fallback: show message about cross-origin limitations
+                addCrossOriginMessage();
+            }
+        }
+        
+        function addCrossOriginMessage() {
+            const message = document.createElement('div');
+            message.innerHTML = `
+                <div style="background: #f39c12; color: white; padding: 15px; margin: 20px; 
+                           border-radius: 5px; text-align: center;">
+                    <strong>ℹ️ Demo Limitation:</strong> Cross-origin restrictions prevent iframe enhancements. 
+                    Enhanced features will be fully available when integrated into the main analysis pages.
+                </div>
+            `;
+            document.getElementById('content-container').appendChild(message);
+        }
+        
+        // Update display indicators
+        function updateDisplayIndicators() {
+            const heightIndicator = document.getElementById('height-indicator');
+            const memoryIndicator = document.getElementById('memory-indicator');
+            
+            if (heightIndicator) {
+                heightIndicator.textContent = `Full viewport height (native scrolling)`;
+            }
+            
+            if (memoryIndicator && performance.memory) {
+                const usedMB = Math.round(performance.memory.usedJSHeapSize / 1024 / 1024);
+                const totalMB = Math.round(performance.memory.totalJSHeapSize / 1024 / 1024);
+                memoryIndicator.textContent = `${usedMB}MB / ${totalMB}MB`;
+            } else if (memoryIndicator) {
+                memoryIndicator.textContent = `Monitoring enabled`;
+            }
+        }
+        
+        // Cleanup function for navigation
+        function cleanupAndNavigate(url) {
+            // Clear iframe content to free memory
+            const iframe = document.querySelector('.content-frame iframe');
+            if (iframe) {
+                iframe.src = 'about:blank';
+                iframe.remove();
+            }
+            
+            // Clear any remaining DOM content
+            const contentContainer = document.getElementById('content-container');
+            if (contentContainer) {
+                contentContainer.innerHTML = '';
+            }
+            
+            // Force garbage collection if available
+            if (window.gc) {
+                window.gc();
+            }
+            
+            // Navigate to target URL
+            window.location.href = url;
+            return false; // Prevent default link behavior
+        }
+        
+        // Cleanup on browser back button
+        window.addEventListener('beforeunload', function() {
+            cleanupAndNavigate();
+        });
+        
+        // Cleanup on page visibility change (when user switches tabs)
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden) {
+                // User switched away from tab, cleanup iframe
+                const iframe = document.querySelector('.content-frame iframe');
+                if (iframe) {
+                    iframe.src = 'about:blank';
+                }
+            }
+        });
+        
+        // Periodic memory monitoring
+        function startMemoryMonitoring() {
+            updateDisplayIndicators();
+            setInterval(updateDisplayIndicators, 5000); // Update every 5 seconds
+        }
+        
+        // Initialize with first available page
+        document.addEventListener('DOMContentLoaded', () => {
+            const firstAvailable = Object.keys(availableFiles)[0] || 'matched';
+            loadAnalysisPage(firstAvailable);
+            startMemoryMonitoring();
+        });
+    </script>
+</body>
+</html>

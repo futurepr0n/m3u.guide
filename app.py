@@ -478,6 +478,47 @@ def watch_video():
     decoded_url = urllib.parse.unquote(video_url)
     return render_template('watch_video.html', video_url=decoded_url)
 
+# Enhanced content analysis route
+@app.route('/demo/enhanced/<int:user_id>/<path:playlist_name>')
+def enhanced_content_analysis(user_id, playlist_name):
+    """Enhanced content analysis UI with collapsible groups, search, and performance optimizations"""
+    try:
+        # Verify user access
+        if 'user_id' not in session or session['user_id'] != user_id:
+            return redirect(url_for('auth.login'))
+        
+        # Get analysis directory path
+        analysis_dir = os.path.join('static', 'playlists', str(user_id), secure_filename(playlist_name), 'analysis')
+        
+        # Check if analysis exists
+        if not os.path.exists(analysis_dir):
+            return "Analysis not found. Please run analysis first.", 404
+            
+        # Check for analysis files
+        analysis_files = {
+            'matched': os.path.join(analysis_dir, 'content_analysis_matched.html'),
+            'movies': os.path.join(analysis_dir, 'content_analysis_movies.html'),
+            'series': os.path.join(analysis_dir, 'content_analysis_series.html'),
+            'unmatched': os.path.join(analysis_dir, 'content_analysis_unmatched.html'),
+            'no_tvg': os.path.join(analysis_dir, 'content_analysis_unmatched_no_tvg.html')
+        }
+        
+        # Find which analysis files exist
+        available_files = {k: v for k, v in analysis_files.items() if os.path.exists(v)}
+        
+        if not available_files:
+            return "No analysis files found. Please run analysis first.", 404
+            
+        # Serve enhanced analysis version
+        return render_template('enhanced_content_analysis.html', 
+                             user_id=user_id, 
+                             playlist_name=playlist_name,
+                             analysis_files=available_files)
+                             
+    except Exception as e:
+        app.logger.error(f"Enhanced analysis error: {str(e)}")
+        return f"Error loading enhanced analysis: {str(e)}", 500
+
 # Update the analyze_playlist route
 @app.route('/analyze-playlist', methods=['POST'])
 def analyze_playlist():

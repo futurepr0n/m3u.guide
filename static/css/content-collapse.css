@@ -1,0 +1,414 @@
+/**
+ * Content Collapse Enhancement Styles
+ * Styling for collapsible groups and enhanced UI elements
+ */
+
+/* Collapsed group styles */
+.group-header.collapsed {
+    opacity: 0.8;
+    background: linear-gradient(135deg, #95a5a6 0%, #7f8c8d 100%);
+    transition: all 0.3s ease;
+}
+
+.group-header.collapsed:hover {
+    opacity: 1;
+    background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+/* Group header enhancements */
+.group-header {
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+    user-select: none;
+}
+
+.group-header:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+.group-header:focus {
+    outline: 2px solid #3498db;
+    outline-offset: 2px;
+}
+
+/* Item count styling */
+.item-count {
+    opacity: 0.8;
+    font-weight: normal;
+    font-size: 0.9em;
+}
+
+/* Collapse indicator */
+.collapse-indicator {
+    float: right;
+    font-size: 1.2em;
+    transition: transform 0.3s ease;
+    margin-left: 10px;
+}
+
+.collapsed .collapse-indicator {
+    transform: rotate(0deg);
+}
+
+.group-header:not(.collapsed) .collapse-indicator {
+    transform: rotate(90deg);
+}
+
+/* Performance summary styles */
+.performance-summary {
+    background: linear-gradient(135deg, #e8f4f8 0%, #d5e8f0 100%);
+    border: 1px solid #2ecc71;
+    border-radius: 8px;
+    padding: 20px;
+    margin: 20px 0;
+    font-family: Arial, sans-serif;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.performance-summary h3 {
+    margin: 0 0 15px 0;
+    color: #2c3e50;
+    font-size: 1.2em;
+    display: flex;
+    align-items: center;
+}
+
+.performance-summary h3::before {
+    content: '📊';
+    margin-right: 8px;
+}
+
+.performance-summary .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-bottom: 15px;
+}
+
+.performance-summary .stat-item {
+    background: white;
+    padding: 10px;
+    border-radius: 5px;
+    border-left: 4px solid #2ecc71;
+}
+
+/* Search interface styles */
+.search-interface {
+    background: white;
+    padding: 20px;
+    margin: 20px 0;
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    border-left: 5px solid #3498db;
+}
+
+.search-interface h3 {
+    margin: 0 0 15px 0;
+    color: #2c3e50;
+    display: flex;
+    align-items: center;
+}
+
+.search-interface h3::before {
+    content: '🔍';
+    margin-right: 8px;
+}
+
+#contentSearch {
+    flex: 1;
+    min-width: 200px;
+    padding: 12px 16px;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    font-size: 16px;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+#contentSearch:focus {
+    outline: none;
+    border-color: #3498db;
+    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+}
+
+#searchStats {
+    margin-top: 10px;
+    font-size: 0.9em;
+    color: #666;
+    font-style: italic;
+}
+
+/* Control panel styles */
+.control-panel {
+    background: white;
+    padding: 20px;
+    margin: 20px 0;
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    border-left: 5px solid #f39c12;
+}
+
+.control-panel h3 {
+    margin: 0 0 15px 0;
+    color: #2c3e50;
+    display: flex;
+    align-items: center;
+}
+
+.control-panel h3::before {
+    content: '⚙️';
+    margin-right: 8px;
+}
+
+.control-panel button {
+    padding: 10px 16px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    margin: 2px;
+}
+
+.control-panel button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+.control-panel button:active {
+    transform: translateY(0);
+}
+
+/* Button color variations */
+.control-panel button[onclick*="expandAll"] {
+    background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+    color: white;
+}
+
+.control-panel button[onclick*="collapseAll"] {
+    background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+    color: white;
+}
+
+.control-panel button[onclick*="collapseOnlyLarge"] {
+    background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
+    color: white;
+}
+
+.control-panel button[onclick*="clearSearch"] {
+    background: linear-gradient(135deg, #95a5a6 0%, #7f8c8d 100%);
+    color: white;
+}
+
+#controlStats {
+    margin-top: 12px;
+    font-size: 0.9em;
+    color: #666;
+    font-style: italic;
+}
+
+/* Large group warning indicator */
+.group-header[style*="border-left: 4px solid #f39c12"] {
+    position: relative;
+}
+
+.group-header[style*="border-left: 4px solid #f39c12"]::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 0;
+    height: 0;
+    border-left: 15px solid transparent;
+    border-top: 15px solid #f39c12;
+}
+
+/* Performance indicators */
+.performance-indicator {
+    display: inline-block;
+    margin-left: 5px;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+/* Loading states */
+.loading-state {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 40px;
+    color: #7f8c8d;
+}
+
+.loading-spinner {
+    width: 20px;
+    height: 20px;
+    border: 2px solid #f3f3f3;
+    border-top: 2px solid #3498db;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-left: 10px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Search highlighting */
+.search-highlight {
+    background-color: #fff3cd;
+    padding: 1px 3px;
+    border-radius: 3px;
+    font-weight: bold;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .performance-summary .stats-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .search-interface > div {
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    #contentSearch {
+        min-width: 100%;
+    }
+    
+    .control-panel > div {
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .control-panel button {
+        width: 100%;
+    }
+    
+    .group-header {
+        padding: 15px;
+        font-size: 0.9em;
+    }
+    
+    .item-count {
+        display: block;
+        margin-top: 5px;
+    }
+}
+
+@media (max-width: 480px) {
+    .performance-summary,
+    .search-interface,
+    .control-panel {
+        padding: 15px;
+        margin: 15px 0;
+    }
+    
+    .performance-summary h3,
+    .search-interface h3,
+    .control-panel h3 {
+        font-size: 1em;
+    }
+    
+    #contentSearch {
+        font-size: 16px; /* Prevent zoom on iOS */
+    }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+    .performance-summary,
+    .search-interface,
+    .control-panel {
+        background: #2c3e50;
+        color: #ecf0f1;
+        border-color: #34495e;
+    }
+    
+    .performance-summary .stat-item {
+        background: #34495e;
+        color: #ecf0f1;
+    }
+    
+    #contentSearch {
+        background: #34495e;
+        color: #ecf0f1;
+        border-color: #4a5a6a;
+    }
+    
+    #contentSearch:focus {
+        border-color: #3498db;
+        box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.2);
+    }
+    
+    #searchStats,
+    #controlStats {
+        color: #bdc3c7;
+    }
+}
+
+/* Animation enhancements */
+.group {
+    transition: all 0.3s ease;
+}
+
+.group:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+}
+
+/* Accessibility improvements */
+.group-header:focus-visible {
+    outline: 3px solid #3498db;
+    outline-offset: 2px;
+}
+
+.control-panel button:focus-visible,
+#contentSearch:focus-visible {
+    outline: 3px solid #3498db;
+    outline-offset: 2px;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+    .group-header.collapsed {
+        border: 2px solid #000;
+    }
+    
+    .performance-summary,
+    .search-interface,
+    .control-panel {
+        border: 2px solid #000;
+    }
+    
+    .control-panel button {
+        border: 1px solid #000;
+    }
+}
+
+/* Print styles */
+@media print {
+    .performance-summary,
+    .search-interface,
+    .control-panel {
+        display: none;
+    }
+    
+    .group-header.collapsed + * {
+        display: block !important;
+    }
+    
+    .collapse-indicator {
+        display: none;
+    }
+}
