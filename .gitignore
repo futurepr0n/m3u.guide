@@ -1,0 +1,89 @@
+# Virtual Environment
+venv/
+env/
+ENV/
+.env
+.venv/
+.ENV/
+.claude
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Flask Session Files
+flask_session/
+sessions/
+
+# Application Specific
+playlists.json
+key_metadata.json
+secret_key
+*.m3u
+*.xml
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs
+*.log
+log/
+logs/
+
+# Coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# User-specific files
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Media files that might be uploaded during testing
+*.mp3
+*.mp4
+*.avi
+*.mkv
+*.m4v
+
+#
+instance/
+
+playlists/
+
+examplecommand
