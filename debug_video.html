@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Debug Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .debug-info { background: #f8f9fa; padding: 15px; margin: 10px 0; border-radius: 5px; }
+        video { width: 100%; max-width: 800px; }
+        .error { color: red; }
+        .success { color: green; }
+        .info { color: blue; }
+    </style>
+</head>
+<body>
+    <h1>IPTV Stream Debug Test</h1>
+    
+    <div class="debug-info">
+        <h3>Stream URL:</h3>
+        <p id="streamUrl">http://cf.loyxy.cloud:80/0315f725a2a1/b569016b2e/498794</p>
+    </div>
+    
+    <div class="debug-info">
+        <h3>Debug Log:</h3>
+        <div id="debugLog"></div>
+    </div>
+    
+    <video controls crossorigin="anonymous">
+        <source src="http://cf.loyxy.cloud:80/0315f725a2a1/b569016b2e/498794" type="video/mp4">
+        <source src="http://cf.loyxy.cloud:80/0315f725a2a1/b569016b2e/498794" type="application/x-mpegURL">
+        <source src="http://cf.loyxy.cloud:80/0315f725a2a1/b569016b2e/498794">
+        Your browser does not support the video tag or this stream format.
+    </video>
+    
+    <script>
+        const video = document.querySelector('video');
+        const debugLog = document.getElementById('debugLog');
+        
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.className = type;
+            logEntry.textContent = `[${timestamp}] ${message}`;
+            debugLog.appendChild(logEntry);
+            console.log(message);
+        }
+        
+        // Check if the video element supports different formats
+        log('Browser video format support:');
+        log(`- MP4: ${video.canPlayType('video/mp4')}`);
+        log(`- WebM: ${video.canPlayType('video/webm')}`);
+        log(`- OGG: ${video.canPlayType('video/ogg')}`);
+        log(`- HLS: ${video.canPlayType('application/x-mpegURL')}`);
+        log(`- TS: ${video.canPlayType('video/mp2t')}`);
+        
+        // Video event listeners
+        video.addEventListener('loadstart', () => log('Video loading started', 'info'));
+        video.addEventListener('durationchange', () => log(`Duration: ${video.duration}s`, 'info'));
+        video.addEventListener('loadedmetadata', () => log('Metadata loaded', 'success'));
+        video.addEventListener('loadeddata', () => log('Data loaded', 'success'));
+        video.addEventListener('canplay', () => log('Can start playing', 'success'));
+        video.addEventListener('canplaythrough', () => log('Can play through', 'success'));
+        video.addEventListener('playing', () => log('Video is playing', 'success'));
+        video.addEventListener('waiting', () => log('Video is buffering', 'info'));
+        video.addEventListener('stalled', () => log('Video stalled', 'error'));
+        video.addEventListener('suspend', () => log('Video suspended', 'info'));
+        video.addEventListener('abort', () => log('Video loading aborted', 'error'));
+        video.addEventListener('emptied', () => log('Video emptied', 'error'));
+        
+        video.addEventListener('error', (e) => {
+            log(`Video error occurred:`, 'error');
+            if (video.error) {
+                const errorCodes = {
+                    1: 'MEDIA_ERR_ABORTED - The fetching process for the media resource was aborted by the user agent.',
+                    2: 'MEDIA_ERR_NETWORK - A network error of some description caused the user agent to stop fetching the media resource.',
+                    3: 'MEDIA_ERR_DECODE - An error of some description occurred while decoding the media resource.',
+                    4: 'MEDIA_ERR_SRC_NOT_SUPPORTED - The media resource indicated by the src attribute was not suitable.'
+                };
+                log(`Error code: ${video.error.code} - ${errorCodes[video.error.code]}`, 'error');
+                log(`Error message: ${video.error.message || 'No message'}`, 'error');
+            }
+        });
+        
+        // Network connectivity test
+        fetch(video.querySelector('source').src, { method: 'HEAD' })
+            .then(response => {
+                log(`Stream accessibility test: ${response.status} ${response.statusText}`, 'success');
+                log(`Content-Type: ${response.headers.get('content-type')}`, 'info');
+                log(`Content-Length: ${response.headers.get('content-length')}`, 'info');
+            })
+            .catch(error => {
+                log(`Stream accessibility error: ${error.message}`, 'error');
+            });
+            
+        // Try to force load after 2 seconds if no progress
+        setTimeout(() => {
+            if (video.readyState === 0) {
+                log('Forcing video load attempt...', 'info');
+                video.load();
+            }
+        }, 2000);
+    </script>
+</body>
+</html>

@@ -531,6 +531,9 @@ def generate_group_content(group_name, channels, include_epg=True, is_series=Fal
             stream_cell = f"""
                 <td class="stream-cell">
                     <div class="stream-actions">
+                        <a href="/watch_video?url={encoded_url}" class="action-btn watch-btn">
+                            <i class="fa fa-play"></i> Watch
+                        </a>
                         <a href="vlc://{encoded_url}" class="action-btn vlc-btn" data-platform="desktop">
                             <i class="fa fa-play-circle"></i> VLC Desktop
                         </a>
@@ -934,19 +937,63 @@ def generate_html_page(title, content, shared_header, css_styles, scripts="", m3
         // Copy stream URL to clipboard
         function copyStreamUrl(button, url) {
             const decodedUrl = decodeURIComponent(url);
-            navigator.clipboard.writeText(decodedUrl).then(function() {
-                const originalText = button.innerHTML;
-                button.innerHTML = '<i class="fa fa-check"></i> Copied!';
-                button.style.backgroundColor = '#28a745';
+            
+            // Enhanced clipboard API with fallback
+            const copyToClipboard = async (text) => {
+                if (navigator.clipboard && window.isSecureContext) {
+                    try {
+                        await navigator.clipboard.writeText(text);
+                        return true;
+                    } catch (err) {
+                        console.warn('Clipboard API failed, falling back to execCommand', err);
+                    }
+                }
                 
-                setTimeout(function() {
-                    button.innerHTML = originalText;
-                    button.style.backgroundColor = '';
-                }, 2000);
-            })
-            .catch(function(err) {
-                console.error('Could not copy text: ', err);
-                alert('Failed to copy URL to clipboard');
+                // Fallback for older browsers or insecure contexts
+                const textArea = document.createElement('textarea');
+                textArea.value = text;
+                textArea.style.position = 'fixed';
+                textArea.style.left = '-999999px';
+                textArea.style.top = '-999999px';
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                
+                try {
+                    const successful = document.execCommand('copy');
+                    document.body.removeChild(textArea);
+                    return successful;
+                } catch (err) {
+                    document.body.removeChild(textArea);
+                    return false;
+                }
+            };
+            
+            copyToClipboard(decodedUrl).then(success => {
+                const originalHTML = button.innerHTML;
+                const originalStyle = button.style.cssText;
+                
+                if (success) {
+                    // Success feedback
+                    button.innerHTML = '<i class="fa fa-check"></i> Copied!';
+                    button.style.backgroundColor = '#28a745';
+                    button.disabled = true;
+                    
+                    setTimeout(() => {
+                        button.innerHTML = originalHTML;
+                        button.style.cssText = originalStyle;
+                        button.disabled = false;
+                    }, 2000);
+                } else {
+                    // Error feedback
+                    button.innerHTML = '<i class="fa fa-exclamation"></i> Failed';
+                    button.style.backgroundColor = '#dc3545';
+                    
+                    setTimeout(() => {
+                        button.innerHTML = originalHTML;
+                        button.style.cssText = originalStyle;
+                    }, 2000);
+                }
             });
         }
         

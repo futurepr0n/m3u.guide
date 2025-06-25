@@ -202,7 +202,8 @@ Support for hierarchical playlist structure with visibility controls and sorting
 #### Content Analysis Routes
 - **`/static/playlists/{user_id}/{playlist_name}/analysis/{filename}`**: Serves analysis HTML reports
 - **`/static/playlists/{user_id}/{playlist_name}/analysis/`**: Default analysis landing page
-- **`/watch_video?url={encoded_url}`**: Internal video player for content streaming
+- **`/watch_video?url={encoded_url}`**: Universal video player with VLC integration and URL copying
+- **`/demo/enhanced/{user_id}/{playlist_name}`**: Enhanced content analysis with performance optimizations
 
 #### Playlist Editor Routes
 - **`/playlist/{user_id}/{playlist_name}/edit`**: Loads dual-panel playlist editor
@@ -460,6 +461,8 @@ python3 -c "from app import app; from models import db; app.app_context().push()
 - **Database Inspection**: Use SQLite browser for data examination
 - **Log Analysis**: Monitor logs/app.log for operational insights
 - **Performance Profiling**: Use browser dev tools for frontend optimization
+- **Template Changes**: Restart Flask application for template changes to take effect
+- **Video Player Issues**: Clear browser cache (Cmd+Shift+R) after updates
 
 ## Future Enhancement Opportunities
 
@@ -480,3 +483,32 @@ python3 -c "from app import app; from models import db; app.app_context().push()
 - **Load Balancing**: Multi-instance deployment support
 - **Database Scaling**: PostgreSQL with read replicas
 - **Container Orchestration**: Kubernetes deployment manifests
+
+## Recent Enhancements (2025-06-24)
+
+### Video Player System
+- **Universal Video Player**: `/watch_video` route handles all video formats (MP4, MKV, IPTV streams)
+- **VLC Integration**: Direct "Open in VLC" buttons for external player support
+- **Copy URL Functionality**: Universal clipboard copying for stream URLs
+- **Enhanced Content Analysis**: Copy URL and Watch buttons integrated into analysis reports
+- **Cross-Platform Support**: Mobile and desktop compatibility for external player launching
+
+### Enhanced Analysis Interface
+- **Performance Optimizations**: Handles 275K+ content items with collapsible groups
+- **Memory Management**: Automatic cleanup when navigating between analysis and dashboard
+- **Progressive Enhancement**: iframe-based enhancement with fallback to original interface
+- **Search and Filtering**: Real-time content search capabilities
+- **Universal Actions**: Watch and Copy URL buttons across all content sections (Movies, Series, Live TV)
+
+### Technical Implementation Details
+- **Template Architecture**: watch_video.html with simple HTML5 player + external options
+- **JavaScript Clipboard API**: Modern clipboard access with fallback for older browsers  
+- **Flask Route Design**: Clean separation of video player and content analysis routes
+- **IPTV Stream Handling**: Direct URL access without problematic proxying
+- **Browser Compatibility**: Works across Brave, Edge, Chrome, Safari
+
+### Development Notes
+- **Template Caching**: Flask debug mode auto-reloads templates, but manual restart may be needed
+- **Browser Cache**: Hard refresh (Cmd+Shift+R) required after JavaScript changes
+- **IPTV vs Files**: IPTV streams work best in VLC; MP4/MKV files play natively in browser
+- **URL Encoding**: Proper URL handling for special characters in stream URLs

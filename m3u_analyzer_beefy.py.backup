@@ -270,30 +270,6 @@ def generate_series_page_content(channels, group_name):
         .watch-btn:hover {
             background-color: #0056b3;
         }
-
-        .copy-btn {
-            background-color: #6c757d;
-            border: none;
-            cursor: pointer;
-        }
-
-        .copy-btn:hover {
-            background-color: #545b62;
-        }
-
-        .stream-actions {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 4px;
-            align-items: center;
-        }
-
-        .actions-cell {
-            white-space: nowrap;
-            text-align: center;
-            vertical-align: middle;
-            min-width: 150px;
-        }
         
         .episode-table th,
         .episode-table td {
@@ -469,20 +445,13 @@ def generate_group_content(group_name, channels, include_epg=True, is_series=Fal
         if channel.get('logo'):  # Only try to show logo if it exists
             logo_html = f'<img src="{channel["logo"]}" alt="{"Movie Poster" if is_movie else "Channel Logo"}" class="{logo_class}" onerror="this.style.display=\'none\'">'
             
-        # Actions for ALL content types that have URLs
-        if channel.get('url'):
+        # Actions for movies
+        if is_movie and channel.get('url', '').lower().endswith('.mkv'):
             encoded_url = urllib.parse.quote(channel['url'])
             actions_column = f"""
                 <td class="actions-cell">
-                    <div class="stream-actions">
-                        {f'<a href="{channel["url"]}" class="action-btn download-btn" download="{channel["name"]}.mkv"><i class="fa fa-download"></i> Download</a>' if channel.get('url', '').lower().endswith('.mkv') else ''}
-                        <a href="/watch_video?url={encoded_url}" class="action-btn watch-btn">
-                            <i class="fa fa-play"></i> Watch
-                        </a>
-                        <button onclick="copyStreamUrl(this, '{encoded_url}')" class="action-btn copy-btn">
-                            <i class="fa fa-copy"></i> Copy URL
-                        </button>
-                    </div>
+                    <a href="{channel['url']}" class="action-btn download-btn" download="{channel['name']}.mkv">Download</a>
+                    <a href="/watch_video?url={encoded_url}" class="action-btn watch-btn">Watch</a>
                 </td>
             """
         else:
@@ -1189,69 +1158,6 @@ def generate_split_html_reports(groups, no_tvg_id_groups, matched_groups, output
                 </table>
             `;
         }
-
-        // Copy stream URL to clipboard with enhanced fallback
-        function copyStreamUrl(button, url) {
-            const decodedUrl = decodeURIComponent(url);
-            
-            // Enhanced clipboard API with fallback
-            const copyToClipboard = async (text) => {
-                if (navigator.clipboard && window.isSecureContext) {
-                    try {
-                        await navigator.clipboard.writeText(text);
-                        return true;
-                    } catch (err) {
-                        console.warn('Clipboard API failed, falling back to execCommand', err);
-                    }
-                }
-                
-                // Fallback for older browsers or insecure contexts
-                const textArea = document.createElement('textarea');
-                textArea.value = text;
-                textArea.style.position = 'fixed';
-                textArea.style.left = '-999999px';
-                textArea.style.top = '-999999px';
-                document.body.appendChild(textArea);
-                textArea.focus();
-                textArea.select();
-                
-                try {
-                    const successful = document.execCommand('copy');
-                    document.body.removeChild(textArea);
-                    return successful;
-                } catch (err) {
-                    document.body.removeChild(textArea);
-                    return false;
-                }
-            };
-            
-            copyToClipboard(decodedUrl).then(success => {
-                const originalHTML = button.innerHTML;
-                const originalStyle = button.style.cssText;
-                
-                if (success) {
-                    // Success feedback
-                    button.innerHTML = '<i class="fa fa-check"></i> Copied!';
-                    button.style.backgroundColor = '#28a745';
-                    button.disabled = true;
-                    
-                    setTimeout(() => {
-                        button.innerHTML = originalHTML;
-                        button.style.cssText = originalStyle;
-                        button.disabled = false;
-                    }, 2000);
-                } else {
-                    // Error feedback
-                    button.innerHTML = '<i class="fa fa-exclamation"></i> Failed';
-                    button.style.backgroundColor = '#dc3545';
-                    
-                    setTimeout(() => {
-                        button.innerHTML = originalHTML;
-                        button.style.cssText = originalStyle;
-                    }, 2000);
-                }
-            });
-        }
     """
 
     # Calculate statistics
@@ -1356,7 +1262,6 @@ def generate_split_html_reports(groups, no_tvg_id_groups, matched_groups, output
             ''.join(matched_content),
             shared_header,
             css_styles,
-            scripts,
             m3u_editor_command=m3u_editor_command
         ))
     files_created.append(matched_file)
@@ -1368,8 +1273,7 @@ def generate_split_html_reports(groups, no_tvg_id_groups, matched_groups, output
             "Content without EPG Matches",
             ''.join(unmatched_content),
             shared_header,
-            css_styles,
-            scripts
+            css_styles
         ))
     files_created.append(unmatched_file)
 

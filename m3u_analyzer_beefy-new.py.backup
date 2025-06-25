@@ -231,6 +231,16 @@ def generate_series_page_content(channels, group_name):
             font-weight: bold;
         }
         
+        .stream-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        
+        .stream-actions .action-btn {
+            margin: 2px 0;
+        }
+        
         .series-info {
             padding: 10px 15px;
             background: #f8f9fa;
@@ -271,28 +281,36 @@ def generate_series_page_content(channels, group_name):
             background-color: #0056b3;
         }
 
+        .vlc-btn {
+            background-color: #f58220; /* VLC orange color */
+        }
+
+        .vlc-btn:hover {
+            background-color: #d46e1d;
+        }
+        
+        .vlc-ios-btn {
+            background-color: #007aff; /* iOS blue */
+        }
+        
+        .vlc-ios-btn:hover {
+            background-color: #0062cc;
+        }
+        
+        .vlc-android-btn {
+            background-color: #3ddc84; /* Android green */
+        }
+        
+        .vlc-android-btn:hover {
+            background-color: #2fb76d;
+        }
+        
         .copy-btn {
             background-color: #6c757d;
-            border: none;
-            cursor: pointer;
         }
-
+        
         .copy-btn:hover {
-            background-color: #545b62;
-        }
-
-        .stream-actions {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 4px;
-            align-items: center;
-        }
-
-        .actions-cell {
-            white-space: nowrap;
-            text-align: center;
-            vertical-align: middle;
-            min-width: 150px;
+            background-color: #5a6268;
         }
         
         .episode-table th,
@@ -305,13 +323,21 @@ def generate_series_page_content(channels, group_name):
         
         .actions-cell {
             white-space: nowrap;
-            text-align: right;
         }
 
-
+        @media (max-width: 768px) {
+            .stream-actions {
+                flex-direction: column;
+            }
+            
+            .action-btn {
+                margin: 4px 0;
+                text-align: center;
+            }
+        }
     """
     
-# First prepare the series list items
+    # First prepare the series list items
     series_list_items = []
     for series_name, seasons in sorted(series_data.items()):
         total_episodes = sum(len(episodes) for episodes in seasons.values())
@@ -408,10 +434,28 @@ def generate_series_page_content(channels, group_name):
                                     <td>E${{ep.episode.toString().padStart(2, '0')}}</td>
                                     <td>${{ep.name}}</td>
                                     <td class="actions-cell">
-                                        ${{ep.url && ep.url.toLowerCase().endsWith('.mkv') ? `
-                                            <a href="${{ep.url}}" class="action-btn download-btn" download="${{ep.name}}.mkv">Download</a>
-                                            <a href="/watch_video?url=${{encodeURIComponent(ep.url)}}" class="action-btn watch-btn">Watch</a>
-                                        ` : ''}}
+                                        ${{ep.url ? `
+                                            <div class="stream-actions">
+                                                <a href="${{ep.url}}" class="action-btn download-btn" download="${{ep.name}}.mkv">
+                                                    <i class="fa fa-download"></i> Download
+                                                </a>
+                                                <a href="/watch_video?url=${{encodeURIComponent(ep.url)}}" class="action-btn watch-btn">
+                                                    <i class="fa fa-play"></i> Watch
+                                                </a>
+                                                <a href="vlc://${{encodeURIComponent(ep.url)}}" class="action-btn vlc-btn" data-platform="desktop">
+                                                    <i class="fa fa-play-circle"></i> VLC Desktop
+                                                </a>
+                                                <a href="vlc-x-callback://x-callback-url/stream?url=${{encodeURIComponent(ep.url)}}" class="action-btn vlc-ios-btn" data-platform="ios">
+                                                    <i class="fa fa-play-circle"></i> VLC iOS
+                                                </a>
+                                                <a href="intent://${{encodeURIComponent(ep.url)}}#Intent;package=org.videolan.vlc;action=android.intent.action.VIEW;end" class="action-btn vlc-android-btn" data-platform="android">
+                                                    <i class="fa fa-play-circle"></i> VLC Android
+                                                </a>
+                                                <button onclick="copyStreamUrl(this, '${{encodeURIComponent(ep.url)}}')" class="action-btn copy-btn">
+                                                    <i class="fa fa-copy"></i> Copy URL
+                                                </button>
+                                            </div>
+                                        ` : 'No stream URL available'}}
                                     </td>
                                 </tr>
                             `).join('')}}
@@ -469,15 +513,32 @@ def generate_group_content(group_name, channels, include_epg=True, is_series=Fal
         if channel.get('logo'):  # Only try to show logo if it exists
             logo_html = f'<img src="{channel["logo"]}" alt="{"Movie Poster" if is_movie else "Channel Logo"}" class="{logo_class}" onerror="this.style.display=\'none\'">'
             
-        # Actions for ALL content types that have URLs
-        if channel.get('url'):
+        # Actions for movies
+        if is_movie and channel.get('url', '').lower().endswith('.mkv'):
             encoded_url = urllib.parse.quote(channel['url'])
             actions_column = f"""
                 <td class="actions-cell">
+                    <a href="{channel['url']}" class="action-btn download-btn" download="{channel['name']}.mkv">Download</a>
+                    <a href="/watch_video?url={encoded_url}" class="action-btn watch-btn">Watch</a>
+                </td>
+            """
+        else:
+            actions_column = ''
+        
+        # Add multi-platform VLC links
+        if channel.get('url'):
+            encoded_url = urllib.parse.quote(channel.get('url', ''))
+            stream_cell = f"""
+                <td class="stream-cell">
                     <div class="stream-actions">
-                        {f'<a href="{channel["url"]}" class="action-btn download-btn" download="{channel["name"]}.mkv"><i class="fa fa-download"></i> Download</a>' if channel.get('url', '').lower().endswith('.mkv') else ''}
-                        <a href="/watch_video?url={encoded_url}" class="action-btn watch-btn">
-                            <i class="fa fa-play"></i> Watch
+                        <a href="vlc://{encoded_url}" class="action-btn vlc-btn" data-platform="desktop">
+                            <i class="fa fa-play-circle"></i> VLC Desktop
+                        </a>
+                        <a href="vlc-x-callback://x-callback-url/stream?url={encoded_url}" class="action-btn vlc-ios-btn" data-platform="ios">
+                            <i class="fa fa-play-circle"></i> VLC iOS
+                        </a>
+                        <a href="intent://{encoded_url}#Intent;package=org.videolan.vlc;action=android.intent.action.VIEW;end" class="action-btn vlc-android-btn" data-platform="android">
+                            <i class="fa fa-play-circle"></i> VLC Android
                         </a>
                         <button onclick="copyStreamUrl(this, '{encoded_url}')" class="action-btn copy-btn">
                             <i class="fa fa-copy"></i> Copy URL
@@ -486,7 +547,7 @@ def generate_group_content(group_name, channels, include_epg=True, is_series=Fal
                 </td>
             """
         else:
-            actions_column = ''
+            stream_cell = "<td>No stream URL available</td>"
         
         # Always add the row, regardless of logo presence
         channel_rows.append(f"""
@@ -495,6 +556,7 @@ def generate_group_content(group_name, channels, include_epg=True, is_series=Fal
                 <td>{channel['name']}</td>
                 {'' if is_movie else f'<td>{channel["tvg_id"]}</td>'}
                 {actions_column}
+                {stream_cell}
                 {epg_column}
             </tr>
         """)
@@ -515,6 +577,7 @@ def generate_group_content(group_name, channels, include_epg=True, is_series=Fal
                         <th>Name</th>
                         {'' if is_movie else '<th>TVG ID</th>'}
                         {actions_header}
+                        <th>Stream</th>
                         {epg_header}
                     </tr>
                 </thead>
@@ -839,8 +902,6 @@ def generate_shared_header(total_channels, total_epg_matches, total_movies, tota
 
 def generate_html_page(title, content, shared_header, css_styles, scripts="", m3u_editor_command=None):
     """Generate a complete HTML page"""
-        # Get absolute paths for the M3U and EPG files
-
     command_div = ""
     if m3u_editor_command:
         command_div = f"""
@@ -850,6 +911,63 @@ def generate_html_page(title, content, shared_header, css_styles, scripts="", m3
             </div>
         """
 
+    # Additional scripts for platform detection and URL copying
+    additional_scripts = """
+        // Platform detection
+        function detectPlatform() {
+            const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+            
+            // iOS detection
+            if (/iPad|iPhone|iPod/.test(userAgent) && !window.MSStream) {
+                return 'ios';
+            }
+            
+            // Android detection
+            if (/android/i.test(userAgent)) {
+                return 'android';
+            }
+            
+            // Default to desktop
+            return 'desktop';
+        }
+        
+        // Copy stream URL to clipboard
+        function copyStreamUrl(button, url) {
+            const decodedUrl = decodeURIComponent(url);
+            navigator.clipboard.writeText(decodedUrl).then(function() {
+                const originalText = button.innerHTML;
+                button.innerHTML = '<i class="fa fa-check"></i> Copied!';
+                button.style.backgroundColor = '#28a745';
+                
+                setTimeout(function() {
+                    button.innerHTML = originalText;
+                    button.style.backgroundColor = '';
+                }, 2000);
+            })
+            .catch(function(err) {
+                console.error('Could not copy text: ', err);
+                alert('Failed to copy URL to clipboard');
+            });
+        }
+        
+        // Show only relevant platform buttons
+        document.addEventListener('DOMContentLoaded', function() {
+            const platform = detectPlatform();
+            console.log('Detected platform:', platform);
+            
+            // Show platform-specific buttons
+            document.querySelectorAll('[data-platform]').forEach(button => {
+                if (button.dataset.platform === platform) {
+                    button.style.display = 'inline-block';
+                    // Make platform-specific button more prominent
+                    button.style.fontWeight = 'bold';
+                    button.style.padding = '6px 10px';
+                } else {
+                    button.style.display = 'none';
+                }
+            });
+        });
+    """
 
     return f"""
     <!DOCTYPE html>
@@ -858,6 +976,7 @@ def generate_html_page(title, content, shared_header, css_styles, scripts="", m3
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>{title} - M3U Content Analysis</title>
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
         <style>
             {css_styles}
             .nav-tabs {{ display: flex; gap: 10px; margin-bottom: 20px; }}
@@ -875,18 +994,130 @@ def generate_html_page(title, content, shared_header, css_styles, scripts="", m3
             .tab.active {{
                 background: #2c3e50;
             }}
+            
+            /* VLC button styling */
+            .vlc-btn {{
+                background-color: #f58220; /* VLC orange color */
+                color: white;
+                padding: 6px 12px;
+                border-radius: 4px;
+                text-decoration: none;
+                display: inline-block;
+                font-size: 14px;
+                transition: background-color 0.2s;
+            }}
+            
+            .vlc-btn:hover {{
+                background-color: #d46e1d;
+            }}
+            
+            /* iOS VLC button */
+            .vlc-ios-btn {{
+                background-color: #007aff; /* iOS blue */
+                color: white;
+                padding: 6px 12px;
+                border-radius: 4px;
+                text-decoration: none;
+                display: inline-block;
+                font-size: 14px;
+                transition: background-color 0.2s;
+            }}
+            
+            .vlc-ios-btn:hover {{
+                background-color: #0062cc;
+            }}
+            
+            /* Android VLC button */
+            .vlc-android-btn {{
+                background-color: #3ddc84; /* Android green */
+                color: white;
+                padding: 6px 12px;
+                border-radius: 4px;
+                text-decoration: none;
+                display: inline-block;
+                font-size: 14px;
+                transition: background-color 0.2s;
+            }}
+            
+            .vlc-android-btn:hover {{
+                background-color: #2fb76d;
+            }}
+            
+            /* Copy URL button */
+            .copy-btn {{
+                background-color: #6c757d;
+                color: white;
+                padding: 6px 12px;
+                border-radius: 4px;
+                border: none;
+                display: inline-block;
+                font-size: 14px;
+                cursor: pointer;
+                transition: background-color 0.2s;
+            }}
+            
+            .copy-btn:hover {{
+                background-color: #5a6268;
+            }}
+            
+            .stream-cell {{
+                white-space: nowrap;
+            }}
+            
+            .stream-actions {{
+                display: flex;
+                flex-direction: column;
+                gap: 5px;
+            }}
+            
+            /* Platform info box */
+            .platform-info {{
+                background-color: #f8f9fa;
+                padding: 15px;
+                margin: 20px 0;
+                border-radius: 5px;
+                border-left: 4px solid #f58220;
+            }}
+            
+            /* Responsive adjustments */
+            @media (max-width: 768px) {{
+                .stream-actions {{
+                    flex-direction: column;
+                }}
+                
+                .action-btn {{
+                    margin: 4px 0;
+                    text-align: center;
+                }}
+                
+                .container {{
+                    padding: 10px;
+                }}
+                
+                table {{
+                    display: block;
+                    overflow-x: auto;
+                }}
+            }}
         </style>
         <script>{scripts}</script>
     </head>
     <body>
         <div class="container">
             {shared_header}
+            <div class="platform-info">
+                <p><strong>Stream Playback</strong>: We've detected your device type and are showing the appropriate VLC button. You can also copy the stream URL to use in any compatible player.</p>
+            </div>
             <div class="section-header">
                 <h2>{title}</h2>
             </div>
             {command_div}
             {content}
         </div>
+        
+        <script>
+        {additional_scripts}
+        </script>
     </body>
     </html>
     """
@@ -1189,69 +1420,6 @@ def generate_split_html_reports(groups, no_tvg_id_groups, matched_groups, output
                 </table>
             `;
         }
-
-        // Copy stream URL to clipboard with enhanced fallback
-        function copyStreamUrl(button, url) {
-            const decodedUrl = decodeURIComponent(url);
-            
-            // Enhanced clipboard API with fallback
-            const copyToClipboard = async (text) => {
-                if (navigator.clipboard && window.isSecureContext) {
-                    try {
-                        await navigator.clipboard.writeText(text);
-                        return true;
-                    } catch (err) {
-                        console.warn('Clipboard API failed, falling back to execCommand', err);
-                    }
-                }
-                
-                // Fallback for older browsers or insecure contexts
-                const textArea = document.createElement('textarea');
-                textArea.value = text;
-                textArea.style.position = 'fixed';
-                textArea.style.left = '-999999px';
-                textArea.style.top = '-999999px';
-                document.body.appendChild(textArea);
-                textArea.focus();
-                textArea.select();
-                
-                try {
-                    const successful = document.execCommand('copy');
-                    document.body.removeChild(textArea);
-                    return successful;
-                } catch (err) {
-                    document.body.removeChild(textArea);
-                    return false;
-                }
-            };
-            
-            copyToClipboard(decodedUrl).then(success => {
-                const originalHTML = button.innerHTML;
-                const originalStyle = button.style.cssText;
-                
-                if (success) {
-                    // Success feedback
-                    button.innerHTML = '<i class="fa fa-check"></i> Copied!';
-                    button.style.backgroundColor = '#28a745';
-                    button.disabled = true;
-                    
-                    setTimeout(() => {
-                        button.innerHTML = originalHTML;
-                        button.style.cssText = originalStyle;
-                        button.disabled = false;
-                    }, 2000);
-                } else {
-                    // Error feedback
-                    button.innerHTML = '<i class="fa fa-exclamation"></i> Failed';
-                    button.style.backgroundColor = '#dc3545';
-                    
-                    setTimeout(() => {
-                        button.innerHTML = originalHTML;
-                        button.style.cssText = originalStyle;
-                    }, 2000);
-                }
-            });
-        }
     """
 
     # Calculate statistics
@@ -1356,7 +1524,6 @@ def generate_split_html_reports(groups, no_tvg_id_groups, matched_groups, output
             ''.join(matched_content),
             shared_header,
             css_styles,
-            scripts,
             m3u_editor_command=m3u_editor_command
         ))
     files_created.append(matched_file)
@@ -1368,8 +1535,7 @@ def generate_split_html_reports(groups, no_tvg_id_groups, matched_groups, output
             "Content without EPG Matches",
             ''.join(unmatched_content),
             shared_header,
-            css_styles,
-            scripts
+            css_styles
         ))
     files_created.append(unmatched_file)
 

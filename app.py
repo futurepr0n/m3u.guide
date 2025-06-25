@@ -478,6 +478,49 @@ def watch_video():
     decoded_url = urllib.parse.unquote(video_url)
     return render_template('watch_video.html', video_url=decoded_url)
 
+@app.route('/stream_proxy')
+def stream_proxy():
+    """Proxy IPTV streams to bypass CORS restrictions"""
+    stream_url = request.args.get('url', '')
+    if not stream_url:
+        return 'No URL provided', 400
+    
+    # Decode URL if it's encoded
+    decoded_url = urllib.parse.unquote(stream_url)
+    
+    try:
+        # Stream the content from the IPTV server
+        response = requests.get(decoded_url, stream=True, timeout=10)
+        
+        def generate():
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:
+                    yield chunk
+        
+        # Create response with proper headers
+        flask_response = make_response(generate())
+        
+        # Copy important headers from the original response
+        if 'content-type' in response.headers:
+            flask_response.headers['Content-Type'] = response.headers['content-type']
+        
+        # Add CORS headers
+        flask_response.headers['Access-Control-Allow-Origin'] = '*'
+        flask_response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+        flask_response.headers['Access-Control-Allow-Headers'] = 'Origin, Content-Type, Accept'
+        
+        # Add caching headers
+        flask_response.headers['Cache-Control'] = 'no-cache'
+        
+        return flask_response
+        
+    except requests.exceptions.RequestException as e:
+        app.logger.error(f"Stream proxy error: {str(e)}")
+        return f'Stream error: {str(e)}', 500
+    except Exception as e:
+        app.logger.error(f"Stream proxy unexpected error: {str(e)}")
+        return f'Proxy error: {str(e)}', 500
+
 # Enhanced content analysis route
 @app.route('/demo/enhanced/<int:user_id>/<path:playlist_name>')
 def enhanced_content_analysis(user_id, playlist_name):

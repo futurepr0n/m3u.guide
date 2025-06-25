@@ -291,6 +291,7 @@
             // Create iframe to load original analysis with enhancements
             const iframe = document.createElement('iframe');
             iframe.src = `/static/playlists/{{ user_id }}/{{ playlist_name }}/analysis/${getAnalysisFileName(pageType)}`;
+            iframe.allow = 'clipboard-write; clipboard-read';
             iframe.onload = () => {
                 // Inject enhancement scripts into iframe
                 injectEnhancements(iframe);
@@ -332,10 +333,65 @@
                     <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
                                 color: white; padding: 10px; margin: 10px 0; border-radius: 5px; 
                                 text-align: center; font-weight: bold;">
-                        🚀 Enhanced UI Demo Active - Groups auto-collapsed for performance
+                        📊 Enhanced Analysis Active - Advanced UI with Copy URL functionality
                     </div>
                 `;
                 iframeDoc.body.insertBefore(banner, iframeDoc.body.firstChild);
+
+                // Inject clipboard helper that communicates with parent window
+                const clipboardScript = iframeDoc.createElement('script');
+                clipboardScript.textContent = `
+                    // Override copyStreamUrl to use parent window clipboard
+                    window.copyStreamUrl = function(button, encodedUrl) {
+                        const url = decodeURIComponent(encodedUrl);
+                        
+                        // Try to use parent window clipboard
+                        if (window.parent && window.parent !== window) {
+                            window.parent.postMessage({
+                                type: 'clipboard',
+                                url: url,
+                                buttonId: button.id || 'copy-btn-' + Math.random()
+                            }, '*');
+                            
+                            // Provide immediate visual feedback
+                            const originalHTML = button.innerHTML;
+                            const originalStyle = button.style.cssText;
+                            
+                            button.innerHTML = '<i class="fa fa-copy"></i> Copying...';
+                            button.disabled = true;
+                            
+                            // Listen for response from parent
+                            const messageHandler = function(event) {
+                                if (event.data.type === 'clipboard-result') {
+                                    if (event.data.success) {
+                                        button.innerHTML = '<i class="fa fa-check"></i> Copied!';
+                                        button.style.backgroundColor = '#28a745';
+                                    } else {
+                                        button.innerHTML = '<i class="fa fa-exclamation"></i> Failed';
+                                        button.style.backgroundColor = '#dc3545';
+                                    }
+                                    
+                                    setTimeout(() => {
+                                        button.innerHTML = originalHTML;
+                                        button.style.cssText = originalStyle;
+                                        button.disabled = false;
+                                    }, 2000);
+                                    
+                                    window.removeEventListener('message', messageHandler);
+                                }
+                            };
+                            window.addEventListener('message', messageHandler);
+                        } else {
+                            // Fallback to original method if no parent
+                            const originalCopyStreamUrl = window.originalCopyStreamUrl || function(button, url) {
+                                console.log('Copy URL fallback:', url);
+                                alert('Copy URL: ' + url);
+                            };
+                            originalCopyStreamUrl(button, encodedUrl);
+                        }
+                    };
+                `;
+                iframeDoc.head.appendChild(clipboardScript);
                 
             } catch (e) {
                 console.log('Cross-origin restrictions prevent iframe enhancement');
@@ -373,6 +429,53 @@
                 memoryIndicator.textContent = `Monitoring enabled`;
             }
         }
+        
+        // Parent window clipboard handler for iframe communication
+        window.addEventListener('message', function(event) {
+            if (event.data.type === 'clipboard') {
+                const url = event.data.url;
+                
+                // Enhanced clipboard API with fallback
+                const copyToClipboard = async (text) => {
+                    if (navigator.clipboard && window.isSecureContext) {
+                        try {
+                            await navigator.clipboard.writeText(text);
+                            return true;
+                        } catch (err) {
+                            console.warn('Clipboard API failed, falling back to execCommand', err);
+                        }
+                    }
+                    
+                    // Fallback for older browsers or insecure contexts
+                    const textArea = document.createElement('textarea');
+                    textArea.value = text;
+                    textArea.style.position = 'fixed';
+                    textArea.style.left = '-999999px';
+                    textArea.style.top = '-999999px';
+                    document.body.appendChild(textArea);
+                    textArea.focus();
+                    textArea.select();
+                    
+                    try {
+                        const successful = document.execCommand('copy');
+                        document.body.removeChild(textArea);
+                        return successful;
+                    } catch (err) {
+                        document.body.removeChild(textArea);
+                        return false;
+                    }
+                };
+                
+                copyToClipboard(url).then(success => {
+                    // Send result back to iframe
+                    event.source.postMessage({
+                        type: 'clipboard-result',
+                        success: success,
+                        buttonId: event.data.buttonId
+                    }, '*');
+                });
+            }
+        });
         
         // Cleanup function for navigation
         function cleanupAndNavigate(url) {
