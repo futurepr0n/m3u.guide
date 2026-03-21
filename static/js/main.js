@@ -1,4 +1,4 @@
-$(document).ready(function() {
+$(document).ready(function () {
     loadPlaylists();
     addBackButton();
 });
@@ -7,15 +7,15 @@ let currentUserId = null;
 
 function loadPlaylists() {
     $.get('/get-playlists')
-        .done(function(response) {
+        .done(function (response) {
             const tbody = $('#playlistTableBody');
             tbody.empty();
-            
+
             currentUserId = response.user_id;
-            
-            response.playlists.forEach(function(playlist) {
+
+            response.playlists.forEach(function (playlist) {
                 const row = $('<tr></tr>');
-                
+
                 // Add data cells
                 row.append(`<td>${playlist.name}</td>`);
                 row.append(`<td>${playlist.source}</td>`);
@@ -24,7 +24,7 @@ function loadPlaylists() {
                 row.append(`<td>${playlist.total_movies || 0}</td>`);
                 row.append(`<td>${playlist.total_series || 0}</td>`);
                 row.append(`<td>${playlist.total_unmatched || 0}</td>`);
-                
+
                 // Add command cell with a collapsible pre tag
                 const commandCell = $('<td data-column="command" class="hidden-command"></td>');
                 if (playlist.m3u_editor_command) {
@@ -35,15 +35,15 @@ function loadPlaylists() {
                     commandCell.text('No command available');
                 }
                 row.append(commandCell);
-                
+
                 const actions = $('<td></td>');
-                
+
                 // Add action buttons
                 actions.append(`<button class="btn edit-btn" onclick="editPlaylist('${playlist.name}')">Edit</button> `);
                 actions.append(`<button class="btn delete-btn" onclick="deletePlaylist('${playlist.name}')">Delete</button> `);
                 actions.append(`<button class="btn process-btn" onclick="processPlaylist('${playlist.name}')">Process</button> `);
                 actions.append(`<button class="btn analyze-btn" onclick="analyzePlaylist('${playlist.name}')">Analyze</button> `);
-                
+
                 // Enhanced Content Analysis button (primary)
                 actions.append(`
                     <button class="btn content-analysis-btn" 
@@ -53,7 +53,7 @@ function loadPlaylists() {
                         📊 Content Analysis
                     </button>
                 `);
-                
+
                 // Original Content Analysis button (hidden by default, admin access)
                 if (window.location.search.includes('admin=true')) {
                     actions.append(`
@@ -66,7 +66,7 @@ function loadPlaylists() {
                         </button>
                     `);
                 }
-                
+
                 // Optimize button with data attributes
                 actions.append(`
                     <button class="btn optimize-btn" 
@@ -76,12 +76,12 @@ function loadPlaylists() {
                         Optimize
                     </button>
                 `);
-                
+
                 row.append(actions);
                 tbody.append(row);
             });
         })
-        .fail(function(error) {
+        .fail(function (error) {
             console.error('Error loading playlists:', error);
         });
 }
@@ -89,14 +89,14 @@ function loadPlaylists() {
 function nextStep() {
     const name = $('#playlistName').val();
     const source = $('#playlistSource').val();
-    
+
     if (!name || !source) {
         alert('Please fill in all required fields');
         return;
     }
-    
+
     $.modal.close();
-    switch(source) {
+    switch (source) {
         case 'API Line':
             $('#apiLineModal').modal('show');
             break;
@@ -105,6 +105,9 @@ function nextStep() {
             break;
         case 'M3U File':
             $('#m3uFileModal').modal('show');
+            break;
+        case 'Xtream API':
+            $('#xtreamApiModal').modal('show');
             break;
     }
 }
@@ -116,7 +119,7 @@ function submitApiLine() {
     formData.append('server', $('#server').val());
     formData.append('username', $('#username').val());
     formData.append('password', $('#password').val());
-    
+
     submitPlaylist(formData);
 }
 
@@ -126,7 +129,21 @@ function submitM3uUrl() {
     formData.append('source', 'M3U Url');
     formData.append('m3u_url', $('#m3uUrl').val());
     formData.append('epg_url', $('#epgUrl').val());
-    
+
+    submitPlaylist(formData);
+}
+
+function submitXtreamApi() {
+    const formData = new FormData();
+    formData.append('name', $('#playlistName').val());
+    formData.append('source', 'Xtream API');
+    formData.append('server', $('#xtream_server').val());
+    formData.append('username', $('#xtream_username').val());
+    formData.append('password', $('#xtream_password').val());
+    formData.append('include_vod', $('#include_vod').is(':checked'));
+    formData.append('include_series', $('#include_series').is(':checked'));
+    formData.append('include_proxy', $('#include_proxy').is(':checked'));
+
     submitPlaylist(formData);
 }
 
@@ -136,14 +153,14 @@ function submitM3uFile() {
     formData.append('source', 'M3U File');
     formData.append('m3u_file', $('#m3uFile')[0].files[0]);
     formData.append('epg_file', $('#epgFile')[0].files[0]);
-    
+
     submitPlaylist(formData);
 }
 
 function submitPlaylist(formData) {  // Correct function declaration
     $.modal.close();
     $('#processingStatus').show();
-    
+
     $.ajax({
         url: '/process-playlist',
         type: 'POST',
@@ -151,19 +168,19 @@ function submitPlaylist(formData) {  // Correct function declaration
         processData: false,
         contentType: false
     })
-    .done(function(response) {
-        $('#processingStatus').hide();
-        loadPlaylists();
-        if (response.analyzed) {
-            alert('Playlist processed and analyzed successfully');
-        } else {
-            alert('Playlist processed successfully but analysis failed. You can try analyzing again manually.');
-        }
-    })
-    .fail(function(error) {
-        $('#processingStatus').hide();
-        alert('Error processing playlist: ' + error.responseJSON?.error || 'Unknown error');
-    });
+        .done(function (response) {
+            $('#processingStatus').hide();
+            loadPlaylists();
+            if (response.analyzed) {
+                alert('Playlist processed and analyzed successfully');
+            } else {
+                alert('Playlist processed successfully but analysis failed. You can try analyzing again manually.');
+            }
+        })
+        .fail(function (error) {
+            $('#processingStatus').hide();
+            alert('Error processing playlist: ' + error.responseJSON?.error || 'Unknown error');
+        });
 }
 
 function editPlaylist(name) {
@@ -182,53 +199,53 @@ function deletePlaylist(name) {
             contentType: 'application/json',
             data: JSON.stringify({ name: name })
         })
-        .done(function(response) {
-            loadPlaylists();
-            alert('Playlist deleted successfully');
-        })
-        .fail(function(error) {
-            alert('Error deleting playlist: ' + error.responseJSON?.error || 'Unknown error');
-        });
+            .done(function (response) {
+                loadPlaylists();
+                alert('Playlist deleted successfully');
+            })
+            .fail(function (error) {
+                alert('Error deleting playlist: ' + error.responseJSON?.error || 'Unknown error');
+            });
     }
 }
 
 function analyzePlaylist(name) {
     $('#processingStatus').show();
     $('#statusMessage').text('Analyzing playlist...');
-    
+
     $.ajax({
         url: '/analyze-playlist',
         type: 'POST',
         contentType: 'application/json',
         data: JSON.stringify({ name: name })
     })
-    .done(function(response) {
-        $('#processingStatus').hide();
-        
-        // Find the buttons for this playlist
-        const contentAnalysisBtn = $(`button.content-analysis-btn[onclick="viewEnhancedAnalysis('${name}')"]`);
-        const originalAnalysisBtn = $(`button.original-analysis-btn[onclick="viewOriginalAnalysis('${name}')"]`);
-        const optimizeBtn = $(`button.optimize-btn[onclick="optimizePlaylist('${name}')"]`);
-        
-        // Enable all buttons
-        contentAnalysisBtn.prop('disabled', false);
-        originalAnalysisBtn.prop('disabled', false);
-        optimizeBtn.prop('disabled', false);
-        
-        // Store any command data
-        if (response.command) {
-            optimizeBtn.attr('data-command', response.command);
-        }
-        
-        // Reload playlists to update statistics
-        loadPlaylists();
-        
-        alert('Analysis completed successfully');
-    })
-    .fail(function(error) {
-        $('#processingStatus').hide();
-        alert('Error analyzing playlist: ' + (error.responseJSON?.error || 'Unknown error'));
-    });
+        .done(function (response) {
+            $('#processingStatus').hide();
+
+            // Find the buttons for this playlist
+            const contentAnalysisBtn = $(`button.content-analysis-btn[onclick="viewEnhancedAnalysis('${name}')"]`);
+            const originalAnalysisBtn = $(`button.original-analysis-btn[onclick="viewOriginalAnalysis('${name}')"]`);
+            const optimizeBtn = $(`button.optimize-btn[onclick="optimizePlaylist('${name}')"]`);
+
+            // Enable all buttons
+            contentAnalysisBtn.prop('disabled', false);
+            originalAnalysisBtn.prop('disabled', false);
+            optimizeBtn.prop('disabled', false);
+
+            // Store any command data
+            if (response.command) {
+                optimizeBtn.attr('data-command', response.command);
+            }
+
+            // Reload playlists to update statistics
+            loadPlaylists();
+
+            alert('Analysis completed successfully');
+        })
+        .fail(function (error) {
+            $('#processingStatus').hide();
+            alert('Error analyzing playlist: ' + (error.responseJSON?.error || 'Unknown error'));
+        });
 }
 
 function viewEnhancedAnalysis(name) {
@@ -236,10 +253,10 @@ function viewEnhancedAnalysis(name) {
         console.error('User ID not found');
         return;
     }
-    
+
     // Construct the URL to the enhanced analysis
     const analysisUrl = `/demo/enhanced/${currentUserId}/${encodeURIComponent(name)}`;
-    
+
     // Navigate to the enhanced analysis page
     window.location.href = analysisUrl;
 }
@@ -249,10 +266,10 @@ function viewOriginalAnalysis(name) {
         console.error('User ID not found');
         return;
     }
-    
+
     // Construct the correct URL to the original analysis file
     const analysisUrl = `/static/playlists/${currentUserId}/${encodeURIComponent(name)}/analysis/content_analysis_matched.html`;
-    
+
     // Navigate to the original analysis page
     window.location.href = analysisUrl;
 }
@@ -262,13 +279,13 @@ function optimizePlaylist(name) {
     const optimizeBtn = $(`button.optimize-btn[onclick="optimizePlaylist('${name}')"]`);
     const encodedCommand = optimizeBtn.data('command');
     const command = encodedCommand ? decodeURIComponent(encodedCommand) : '';
-    
+
     console.log('Optimizing playlist:', name);
     console.log('Command:', command);
-    
+
     $('#processingStatus').show();
     $('#statusMessage').text('Optimizing playlist...');
-    
+
     $.ajax({
         url: '/optimize-playlist',
         type: 'POST',
@@ -278,15 +295,15 @@ function optimizePlaylist(name) {
             command: command
         })
     })
-    .done(function(response) {
-        $('#processingStatus').hide();
-        alert('Playlist optimization completed successfully. Check the optimized folder in your playlist directory.');
-    })
-    .fail(function(error) {
-        $('#processingStatus').hide();
-        console.error('Optimization error:', error);
-        alert('Error optimizing playlist: ' + (error.responseJSON?.error || 'Unknown error'));
-    });
+        .done(function (response) {
+            $('#processingStatus').hide();
+            alert('Playlist optimization completed successfully. Check the optimized folder in your playlist directory.');
+        })
+        .fail(function (error) {
+            $('#processingStatus').hide();
+            console.error('Optimization error:', error);
+            alert('Error optimizing playlist: ' + (error.responseJSON?.error || 'Unknown error'));
+        });
 }
 
 // Add this function to handle the back button
@@ -301,10 +318,10 @@ function addBackButton() {
                 'left': '20px',
                 'z-index': '1000'
             })
-            .click(function() {
+            .click(function () {
                 window.location.href = '/';
             });
-        
+
         $('body').prepend(backButton);
     }
 }

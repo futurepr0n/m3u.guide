@@ -18,6 +18,10 @@ import urllib.parse
 import re
 import json
 from collections import defaultdict
+import m3u_epg_editor as editor
+
+# Setup DNS for the whole app
+editor.setup_custom_dns()
 
 
 # Load environment variables
@@ -225,6 +229,13 @@ def process_playlist():
                 epg_path,
                 playlist_data['details']
             )
+        elif source == 'Xtream API':
+            success = process_xtream_api(
+                request.form,
+                m3u_path,
+                epg_path,
+                playlist_data['details']
+            )
         else:
             return jsonify({'error': 'Invalid source type'}), 400
 
@@ -339,6 +350,63 @@ def process_api_line(form_data, m3u_path, epg_path, details):
         app.logger.error(f"API Line processing error: {str(e)}")
         return False
 
+def process_xtream_api(form_data, m3u_path, epg_path, details):
+    try:
+        server = form_data['server']
+        username = form_data['username']
+        password = form_data['password']
+        include_vod = form_data.get('include_vod') == 'true'
+        include_series = form_data.get('include_series') == 'true'
+        include_proxy = form_data.get('include_proxy') == 'true'
+
+        m3u_url = f"{server}/get.php?username={username}&password={password}&type=m3u_plus&output=ts"
+        epg_url = f"{server}/xmltv.php?username={username}&password={password}"
+
+        class MockArgs:
+            def __init__(self, m3uurl, include_vod, include_series, include_proxy, proxy_base):
+                self.m3uurl = m3uurl
+                self.include_vod = include_vod
+                self.include_series = include_series
+                self.include_proxy = include_proxy
+                self.proxy_base = proxy_base
+
+        # Calculate proxy base URL
+        proxy_base = request.host_url.rstrip('/') + '/stream_proxy?url='
+        mock_args = MockArgs(m3u_url, include_vod, include_series, include_proxy, proxy_base if include_proxy else None)
+
+        headers = {
+            'User-Agent': editor.get_random_user_agent(),
+            'Connection': 'close'
+        }
+        
+        m3u_response = editor.get_m3u_from_api(m3u_url, headers, mock_args)
+        
+        if not m3u_response or m3u_response.status_code != 200:
+            raise ValueError(f"Failed to fetch M3U via Xtream API (Status: {m3u_response.status_code if m3u_response else 'N/A'})")
+
+        # Save M3U
+        with open(m3u_path, 'wb') as f:
+            f.write(m3u_response.content)
+
+        # Download EPG
+        download_file(epg_url, epg_path)
+
+        # Update details
+        details.update({
+            'server': server,
+            'username': username,
+            'password': password,
+            'include_vod': include_vod,
+            'include_series': include_series,
+            'm3u_path': str(m3u_path),
+            'epg_path': str(epg_path)
+        })
+        return True
+
+    except Exception as e:
+        app.logger.error(f"Xtream API processing error: {str(e)}")
+        return False
+
 def process_m3u_url(form_data, m3u_path, epg_path, details):
     try:
         m3u_url = form_data['m3u_url']
@@ -382,10 +450,18 @@ def process_m3u_file(files, m3u_path, epg_path, details):
         return False
 
 def download_file(url, path):
-    response = requests.get(url)
-    response.raise_for_status()
-    with open(path, 'wb') as f:
-        f.write(response.content)
+    """Use the robust editor download logic with enhanced headers and DNS"""
+    headers = {
+        'User-Agent': editor.get_random_user_agent(),
+        'Connection': 'close'
+    }
+    response = editor.perform_get_with_backups(url, headers, [])
+    if response is not None and response.status_code == 200:
+        with open(path, 'wb') as f:
+            f.write(response.content)
+    else:
+        status = response.status_code if response is not None else 'No Response'
+        raise ValueError(f"Failed to download {url} (Status: {status})")
 
 @app.route('/delete-playlist', methods=['POST'])
 def delete_playlist():
@@ -476,6 +552,19 @@ def watch_video():
     video_url = request.args.get('url', '')
     # Optionally decode the URL if it's encoded
     decoded_url = urllib.parse.unquote(video_url)
+    
+    # Check if the URL is already pointing to our stream_proxy and extract the real URL
+    # This prevents double-proxying which can cause timeouts and failures
+    if 'stream_proxy?url=' in decoded_url:
+        try:
+            parsed = urllib.parse.urlparse(decoded_url)
+            qs = urllib.parse.parse_qs(parsed.query)
+            if 'url' in qs:
+                # The inner URL might also be encoded, so we decode it
+                decoded_url = urllib.parse.unquote(qs['url'][0])
+        except Exception as e:
+            app.logger.warning(f"Failed to unwrap proxy URL: {e}")
+
     return render_template('watch_video.html', video_url=decoded_url)
 
 @app.route('/stream_proxy')
@@ -490,7 +579,15 @@ def stream_proxy():
     
     try:
         # Stream the content from the IPTV server
-        response = requests.get(decoded_url, stream=True, timeout=10)
+        # Spoof User-Agent to look like a browser/player
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': '*/*',
+            'Connection': 'keep-alive'
+        }
+        
+        # Connection timeout 15s, no read timeout (live streams send chunks indefinitely)
+        response = requests.get(decoded_url, stream=True, timeout=(15, None), headers=headers)
         
         def generate():
             for chunk in response.iter_content(chunk_size=8192):
@@ -586,7 +683,7 @@ def analyze_playlist():
         analysis_dir = playlist_dir / 'analysis'
         analysis_dir.mkdir(exist_ok=True)
 
-        analyzer_script = BASE_DIR / 'm3u_analyzer_beefy.py'
+        analyzer_script = BASE_DIR / 'm3u_analyzer_beefy-new.py'
 
         if not analyzer_script.exists():
             return jsonify({'error': 'Analyzer script not found'}), 500

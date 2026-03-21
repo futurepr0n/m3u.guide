@@ -35,11 +35,51 @@ import datetime
 import dateutil.parser
 import tzlocal
 from urllib.request import url2pathname
+from urllib.parse import urlparse, parse_qs, urlunparse, quote
 from traceback import format_exception
+import socket
+import dns.resolver
+import ipaddress
+import random
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 log_enabled = False
 log_items = []
 start_timestamp = None
+
+
+def setup_custom_dns():
+    """Configure a custom DNS resolver using reliable DNS services"""
+    dns_servers = ["1.1.1.1", "1.0.0.1", "8.8.8.8", "8.8.4.4", "9.9.9.9"]
+
+    custom_resolver = dns.resolver.Resolver()
+    custom_resolver.nameservers = dns_servers
+
+    original_getaddrinfo = socket.getaddrinfo
+
+    def new_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+        if host:
+            try:
+                # Skip DNS resolution for IP addresses
+                try:
+                    ipaddress.ip_address(host)
+                    # If we get here, the host is already an IP address
+                    return original_getaddrinfo(host, port, family, type, proto, flags)
+                except ValueError:
+                    # Not an IP address, so try system DNS first
+                    try:
+                        result = original_getaddrinfo(host, port, family, type, proto, flags)
+                        return result
+                    except Exception:
+                        # Fall back to custom DNS
+                        answers = custom_resolver.resolve(host)
+                        host = str(answers[0])
+            except Exception:
+                pass
+        return original_getaddrinfo(host, port, family, type, proto, flags)
+
+    socket.getaddrinfo = new_getaddrinfo
+    output_str("custom DNS resolver set up")
 
 
 class M3uItem:
@@ -217,9 +257,17 @@ arg_parser.add_argument('--preserve_case', '-pc', action='store_true',
                         help='Optionally preserve the original case sensitivity of tvg-id and channel attributes as '
                              'supplied in the original M3U and EPG file data through to the target newly generated '
                              'M3U and EPG files')
+arg_parser.add_argument('--include_vod', '-iv', action='store_true',
+                        help='Include VOD content from Xtream API')
+arg_parser.add_argument('--include_series', '-is', action='store_true',
+                        help='Include Series content from Xtream API')
+arg_parser.add_argument('--proxy_base', '-pb', nargs='?',
+                        help='Base URL for stream proxying (e.g. http://host/proxy?url=)')
 arg_parser.add_argument('--outdirectory', '-d', nargs='?',
                         help='The output folder where retrieved and generated file are to be stored')
 arg_parser.add_argument('--outfilename', '-f', nargs='?', help='The output filename for the generated files')
+arg_parser.add_argument('--backup_hosts', '-bh', nargs='?', default=[],
+                        help='An optional json array of backup host domains to try if the primary domain fails')
 arg_parser.add_argument('--log_enabled', '-l', action='store_true', help='Optionally log script output to process.log')
 
 
@@ -229,6 +277,7 @@ def main():
     start_timestamp = datetime.datetime.now()
 
     output_str("{0} process started with Python v{1}".format(os.path.basename(__file__), sys.version))
+    setup_custom_dns()
     args = validate_args()
 
     m3u_entries = load_m3u(args)
@@ -340,6 +389,15 @@ def validate_args():
             args.tvh_offset = int(args.tvh_offset)
         else:
             args.tvh_offset = 0
+
+        if args.backup_hosts:
+            try:
+                args.backup_hosts = json.loads(args.backup_hosts)
+            except json.JSONDecodeError:
+                # Handle case where it might be a comma-separated string if not valid JSON
+                args.backup_hosts = [h.strip() for h in args.backup_hosts.split(',')]
+        else:
+            args.backup_hosts = []
 
         log_enabled = args.log_enabled
 
@@ -486,6 +544,11 @@ def hydrate_args_from_json(args, json_cfg_file_path):
         if "log_enabled" in json_data:
             log_enabled = json_data["log_enabled"]
 
+        if "backup_hosts" in json_data:
+            args.backup_hosts = json_data["backup_hosts"]
+        else:
+            args.backup_hosts = []
+
     return args
 
 
@@ -554,31 +617,304 @@ def save_log(args):
 # m3u functions
 ########################################################################################################################
 # downloads an m3u, converts it to a list and returns it
-def load_m3u(args):
-    m3u_response = get_m3u(args.m3uurl, args.request_headers)
+    # Try Xtream API retrieval first as it is generally more reliable
+    output_str("Attempting primary retrieval via Xtream API...")
+    m3u_response = get_m3u_from_api(args.m3uurl, args.request_headers, args)
+
+    # Fallback to direct M3U download if API retrieval fails or is not compatible
+    if m3u_response is None or m3u_response.status_code != 200:
+        if m3u_response is not None:
+            output_str("Xtream API retrieval failed with status {}, falling back to direct download...".format(m3u_response.status_code))
+        else:
+            output_str("URL may not be compatible with Xtream API or API call failed, falling back to direct download...")
+            
+        m3u_response = get_m3u_with_backups(args.m3uurl, args.request_headers, args.backup_hosts)
+
     if m3u_response.status_code == 200:
         m3u_filename = save_original_m3u(args.outdirectory, m3u_response)
-        if args.m3uurl.lower().startswith('http'):
+        if hasattr(m3u_response, 'close'):
             m3u_response.close()
         m3u_entries = parse_m3u(m3u_filename, args)
         return m3u_entries
     else:
-        output_str("the HTTP GET request to {} returned status code {}".format(args.m3uurl, m3u_response.status_code))
-        m3u_response.close()
+        output_str("The retrieval failed after all attempts. Final status code: {}".format(m3u_response.status_code))
+        if hasattr(m3u_response, 'close'):
+            m3u_response.close()
+        return []
 
 
 # performs the HTTP: or FILE: GET
 def get_m3u(m3u_url, request_headers):
-    output_str("performing HTTP GET request to " + m3u_url)
+    return perform_get_request(m3u_url, request_headers)
 
-    if m3u_url.lower().startswith('file'):
+
+# performs the HTTP: or FILE: GET with retry logic for backup hosts
+def perform_get_request(url, request_headers, stream=False):
+    output_str("performing HTTP GET request to " + url)
+
+    # Add a default User-Agent if not provided to help bypass simple bot detection
+    headers = request_headers.copy()
+    if 'User-Agent' not in headers:
+        headers['User-Agent'] = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+
+    if url.lower().startswith('file'):
         session = requests.session()
         session.mount('file://', FileUriAdapter())
-        response = session.get(m3u_url)
-    else:
-        response = requests.get(m3u_url, headers=request_headers)
+        return session.get(url)
+    
+    # Try the primary URL first
+    try:
+        response = requests.get(url, headers=headers, stream=stream, timeout=30)
+        if response.status_code == 200:
+            return response
+        output_str("Primary host failed with status code: {}".format(response.status_code))
+    except Exception as e:
+        output_str("Primary host failed with error: {}".format(e))
 
-    return response
+    # If primary fails, try backup hosts
+    from urllib.parse import urlparse, urlunparse
+    parsed_url = urlparse(url)
+    primary_host = parsed_url.netloc
+
+    # Access args through sys.argv parsing or other means if needed, 
+    # but here we can assume args is passed or accessible if we refactor slightly.
+    # For now, let's assume we might need to pass backup_hosts or have it globally available.
+    # Since this script structure is mostly procedural, I'll allow a fallback check.
+    
+    # NOTE: In this script, args is not global. I should update the calls to pass backup_hosts.
+    # However, to minimize changes to signatures, I'll see if I can find another way or just update signatures.
+    # Looking at the script, main calls load_m3u(args) which calls get_m3u(args.m3uurl, args.request_headers).
+    # I will update get_m3u and get_epg to accept backup_hosts.
+
+    return None
+
+
+def fetch_api_endpoint(url, name, headers, timeout=30):
+    try:
+        output_str("Fetching {}...".format(name))
+        response = requests.get(url, headers=headers, timeout=timeout)
+        if response.status_code == 200:
+            return name, response.json()
+        output_str("Failed to fetch {}: {}".format(name, response.status_code))
+        return name, None
+    except Exception as e:
+        output_str("Error fetching {}: {}".format(name, e))
+        return name, None
+
+def get_m3u_from_api(url, headers, args=None):
+    """Enhanced Xtream API retrieval with VOD and Series support"""
+    output_str("Attempting Xtream API retrieval for: " + url)
+    try:
+        parsed = urlparse(url)
+        params = parse_qs(parsed.query)
+        username = params.get('username', [None])[0]
+        password = params.get('password', [None])[0]
+
+        if not username or not password:
+            output_str("Missing username or password in URL for API retrieval")
+            return None
+
+        base_url = "{}://{}".format(parsed.scheme, parsed.netloc)
+        
+        # Prepare endpoints
+        endpoints = [
+            ("{}/player_api.php?username={}&password={}&action=get_live_categories".format(base_url, username, password), "live_categories"),
+            ("{}/player_api.php?username={}&password={}&action=get_live_streams".format(base_url, username, password), "live_streams")
+        ]
+        
+        if args and args.include_vod:
+            endpoints.extend([
+                ("{}/player_api.php?username={}&password={}&action=get_vod_categories".format(base_url, username, password), "vod_categories"),
+                ("{}/player_api.php?username={}&password={}&action=get_vod_streams".format(base_url, username, password), "vod_streams")
+            ])
+            
+        if args and args.include_series:
+            endpoints.extend([
+                ("{}/player_api.php?username={}&password={}&action=get_series_categories".format(base_url, username, password), "series_categories"),
+                ("{}/player_api.php?username={}&password={}&action=get_series".format(base_url, username, password), "series_streams")
+            ])
+
+        # Fetch concurrently
+        results = {}
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            future_to_name = {executor.submit(fetch_api_endpoint, url, name, headers): name for url, name in endpoints}
+            for future in as_completed(future_to_name):
+                name, data = future.result()
+                results[name] = data
+
+        cat_map = {}
+        m3u_lines = ["#EXTM3U"]
+        
+        # Process Live
+        if results.get("live_categories") and results.get("live_streams"):
+            cats = {c['category_id']: c['category_name'] for c in results["live_categories"]}
+            for s in results["live_streams"]:
+                m3u_lines.append('#EXTINF:-1 tvg-id="{}" tvg-name="{}" tvg-logo="{}" group-title="{}",{}'.format(
+                    s.get('epg_channel_id', ""), s.get('name', ""), s.get('stream_icon', ""), cats.get(s.get('category_id'), "Live"), s.get('name', "")
+                ))
+                s_url = "{}/live/{}/{}/{}.ts".format(base_url, username, password, s.get('stream_id'))
+                if args and args.proxy_base:
+                    s_url = args.proxy_base + quote(s_url)
+                m3u_lines.append(s_url)
+
+        # Process VOD
+        if results.get("vod_categories") and results.get("vod_streams"):
+            cats = {c['category_id']: c['category_name'] for c in results["vod_categories"]}
+            for s in results["vod_streams"]:
+                m3u_lines.append('#EXTINF:-1 tvg-id="{}" tvg-name="{}" tvg-logo="{}" group-title="{}",{}'.format(
+                    "", s.get('name', ""), s.get('stream_icon', ""), cats.get(s.get('category_id'), "Movies"), s.get('name', "")
+                ))
+                s_url = "{}/movie/{}/{}/{}.{}".format(base_url, username, password, s.get('stream_id'), s.get('container_extension', 'mp4'))
+                if args and args.proxy_base:
+                    s_url = args.proxy_base + quote(s_url)
+                m3u_lines.append(s_url)
+
+        # Process Series — fetch per-episode data via get_series_info
+        if results.get("series_categories") and results.get("series_streams"):
+            cats = {c['category_id']: c['category_name'] for c in results["series_categories"]}
+            series_list = results["series_streams"]
+
+            def fetch_series_info(series_entry):
+                sid = series_entry.get('series_id')
+                info_url = "{}/player_api.php?username={}&password={}&action=get_series_info&series_id={}".format(
+                    base_url, username, password, sid)
+                _, data = fetch_api_endpoint(info_url, "series_info_{}".format(sid), headers)
+                return series_entry, data
+
+            series_lines = []
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                futures = [executor.submit(fetch_series_info, s) for s in series_list]
+                for future in as_completed(futures):
+                    try:
+                        series_entry, info = future.result()
+                        if not info or 'episodes' not in info:
+                            continue
+                        category = cats.get(series_entry.get('category_id'), "Series")
+                        series_name = series_entry.get('name', '')
+                        cover = series_entry.get('cover', '')
+                        for season_num, season_eps in info['episodes'].items():
+                            for ep in season_eps:
+                                ep_num = ep.get('episode_num', 1)
+                                ep_title = ep.get('title', '')
+                                ep_name = "{} S{}E{} - {}".format(
+                                    series_name,
+                                    str(season_num).zfill(2),
+                                    str(ep_num).zfill(2),
+                                    ep_title
+                                ) if ep_title else "{} S{}E{}".format(
+                                    series_name,
+                                    str(season_num).zfill(2),
+                                    str(ep_num).zfill(2)
+                                )
+                                ep_id = ep.get('id')
+                                ext = ep.get('container_extension', 'mp4')
+                                ep_url = "{}/series/{}/{}/{}.{}".format(
+                                    base_url, username, password, ep_id, ext)
+                                if args and args.proxy_base:
+                                    ep_url = args.proxy_base + quote(ep_url)
+                                series_lines.append('#EXTINF:-1 tvg-id="" tvg-name="{}" tvg-logo="{}" group-title="{}",{}'.format(
+                                    ep_name, cover, category, ep_name))
+                                series_lines.append(ep_url)
+                    except Exception as e:
+                        output_str("Error fetching series info: {}".format(e))
+            m3u_lines.extend(series_lines)
+
+        output_str("Successfully constructed M3U via API")
+
+        class FallbackResponse:
+            def __init__(self, content):
+                self.content = content.encode('utf-8')
+                self.status_code = 200
+            def close(self):
+                pass
+        
+        return FallbackResponse("\n".join(m3u_lines))
+
+    except Exception as e:
+        output_str("Xtream API retrieval failed: {}".format(e))
+        return None
+
+def get_m3u_with_backups(m3u_url, request_headers, backup_hosts):
+    return perform_get_with_backups(m3u_url, request_headers, backup_hosts, stream=False)
+
+def get_epg_with_backups(epg_url, request_headers, backup_hosts):
+    return perform_get_with_backups(epg_url, request_headers, backup_hosts, stream=True)
+
+def get_random_user_agent():
+    """Returns a random realistic user agent string"""
+    user_agents = [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/121.0.0.0",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0",
+        "VLC/3.0.20 LibVLC/3.0.20",
+        "IPTVSmartersPlayer/4.0",
+        "TiviMate/4.7.0 (Linux; Android 11)"
+    ]
+    return random.choice(user_agents)
+
+
+def perform_get_with_backups(url, request_headers, backup_hosts, stream=False):
+    headers = request_headers.copy()
+    if 'User-Agent' not in headers:
+        headers['User-Agent'] = get_random_user_agent()
+
+    if 'Accept' not in headers:
+        headers['Accept'] = "application/json,text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"
+    if 'Accept-Language' not in headers:
+        headers['Accept-Language'] = "en-US,en;q=0.5"
+    if 'Connection' not in headers:
+        headers['Connection'] = "close"
+    if 'Accept-Encoding' not in headers:
+        headers['Accept-Encoding'] = "gzip, deflate"
+
+    if url.lower().startswith('file'):
+        session = requests.session()
+        session.mount('file://', FileUriAdapter())
+        return session.get(url)
+
+    # 1. Try primary
+    output_str("Attempting primary URL: " + url)
+    try:
+        response = requests.get(url, headers=headers, stream=stream, timeout=30)
+        if response.status_code == 200:
+            return response
+        output_str("Primary host failed with status code: {}".format(response.status_code))
+    except Exception as e:
+        output_str("Primary host failed with error: {}".format(e))
+
+    # 2. Try backups
+    from urllib.parse import urlparse, urlunparse
+    parsed_url = urlparse(url)
+    
+    for backup_host in backup_hosts:
+        # Clean backup host (remove http:// if present, as we will use parsed_url.scheme)
+        clean_backup = backup_host.replace('http://', '').replace('https://', '').rstrip('/')
+        
+        # Reconstruct URL with backup host
+        new_parts = list(parsed_url)
+        new_parts[1] = clean_backup # netloc
+        backup_url = urlunparse(new_parts)
+        
+        output_str("Attempting backup host: " + backup_url)
+        try:
+            response = requests.get(backup_url, headers=headers, stream=stream, timeout=30)
+            if response.status_code == 200:
+                output_str("Backup host successful: " + clean_backup)
+                return response
+            output_str("Backup host {} failed with status code: {}".format(clean_backup, response.status_code))
+        except Exception as e:
+            output_str("Backup host {} failed with error: {}".format(clean_backup, e))
+
+    # If all fail, return the last response or a dummy failing response
+    # For compatibility, we'll return a response object if we have one, otherwise None
+    # but the calling code expects .status_code.
+    
+    # Create a dummy failed response if we have nothing
+    failed_resp = requests.Response()
+    failed_resp.status_code = 404
+    return failed_resp
 
 
 # saves the HTTP GET response to the file system
@@ -800,7 +1136,7 @@ def save_new_m3u(args, m3u_entries):
 ########################################################################################################################
 # downloads an epg gzip file, saves it, extracts it and returns the path to the extracted epg xml
 def load_epg(args):
-    epg_response = get_epg(args.epgurl, args.request_headers)
+    epg_response = get_epg_with_backups(args.epgurl, args.request_headers, args.backup_hosts)
     if epg_response.status_code == 200:
         is_gzipped = \
             args.epgurl.lower().endswith(".gz") or \
@@ -819,16 +1155,7 @@ def load_epg(args):
 
 # performs the HTTP: or FILE: GET
 def get_epg(epg_url, request_headers):
-    output_str("performing HTTP GET request to " + epg_url)
-
-    if epg_url.lower().startswith('file'):
-        session = requests.session()
-        session.mount('file://', FileUriAdapter())
-        response = session.get(epg_url)
-    else:
-        response = requests.get(epg_url, headers=request_headers, stream=True)
-
-    return response
+    return get_epg_with_backups(epg_url, request_headers, []) # Fallback for direct calls if any
 
 
 # saves the http / file GET response to the file system

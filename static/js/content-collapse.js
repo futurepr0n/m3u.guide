@@ -41,10 +41,13 @@
         }
         
         console.log(`Initializing collapsible groups for ${totalGroups} groups`);
-        
-        // Process each group
+
+        // Process each group and track how many were actually processed
+        let processedGroups = 0;
         groups.forEach((group, index) => {
-            processGroup(group, index);
+            if (processGroup(group, index) !== false) {
+                processedGroups++;
+            }
         });
         
         // Add performance summary
@@ -67,19 +70,24 @@
             };
         }
         
-        logPerformanceMetrics();
+        logPerformanceMetrics(processedGroups);
     }
     
     /**
      * Process individual group for collapsible functionality
      */
     function processGroup(group, index) {
+        // Skip series groups that already have their own interactive functionality
+        if (group.querySelector('.series-container')) {
+            return false; // Not processed
+        }
+
         const header = group.querySelector('.group-header');
         const table = group.querySelector('.channel-table, table');
-        
+
         if (!header || !table) {
             console.warn(`Group ${index} missing header or table`);
-            return;
+            return false; // Not processed
         }
         
         // Count items in this group
@@ -106,6 +114,8 @@
         // Add data attributes for search functionality
         group.setAttribute('data-item-count', itemCount);
         group.setAttribute('data-group-index', index);
+
+        return true; // Successfully processed
     }
     
     /**
@@ -524,16 +534,17 @@
     /**
      * Log performance metrics
      */
-    function logPerformanceMetrics() {
+    function logPerformanceMetrics(processedGroups) {
         if (!CONFIG.PERFORMANCE_MONITORING) return;
-        
+
         console.group('🚀 Content Collapse Performance Metrics');
         console.log(`Initialization time: ${performanceMetrics.initTime.toFixed(2)}ms`);
         console.log(`Total DOM elements: ${performanceMetrics.domElements.toLocaleString()}`);
-        console.log(`Groups processed: ${totalGroups.toLocaleString()}`);
+        console.log(`Groups found: ${totalGroups.toLocaleString()}`);
+        console.log(`Groups processed: ${processedGroups.toLocaleString()}`);
         console.log(`Items found: ${totalItems.toLocaleString()}`);
         console.log(`Auto-collapsed: ${collapsedGroups.toLocaleString()}`);
-        console.log(`Performance improvement: ~${Math.round((collapsedGroups / totalGroups) * 100)}%`);
+        console.log(`Performance improvement: ~${processedGroups > 0 ? Math.round((collapsedGroups / processedGroups) * 100) : 0}%`);
         
         if (performanceMetrics.memoryUsage) {
             console.log(`Memory usage: ${performanceMetrics.memoryUsage.used}MB / ${performanceMetrics.memoryUsage.total}MB`);
