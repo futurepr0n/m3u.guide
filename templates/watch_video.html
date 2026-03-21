@@ -1,116 +1,277 @@
 <!DOCTYPE html>
-<html lang="en">
+<html class="dark" lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Video Player</title>
+    <title>m3u.guide — Player</title>
     <script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.8.0/dist/mpegts.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0; padding: 20px;
-            background: #1a1a2e; color: #eee;
-            display: flex; flex-direction: column; align-items: center;
-        }
-        .video-container {
-            max-width: 1200px; width: 100%; margin: 10px auto;
-            background: #16213e; padding: 20px;
-            border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+
+        body { background: #000; color: #e5e2e1; font-family: 'Inter', sans-serif; overflow: hidden; height: 100dvh; }
+
+        /* ── Full-screen video canvas ── */
         #videoEl {
-            width: 100%; max-height: 70vh;
-            background: #000; border-radius: 4px; display: block;
+            position: fixed; inset: 0;
+            width: 100%; height: 100%;
+            object-fit: contain; background: #000; z-index: 1;
+        }
+
+        /* ── Top gradient overlay ── */
+        .canvas-top-gradient {
+            position: fixed; top: 0; left: 0; right: 0; height: 140px;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.75) 0%, transparent 100%);
+            z-index: 10; pointer-events: none;
+        }
+        .canvas-bottom-gradient {
+            position: fixed; bottom: 0; left: 0; right: 0; height: 260px;
+            background: linear-gradient(to top, rgba(0,0,0,0.6) 0%, transparent 100%);
+            z-index: 10; pointer-events: none;
+        }
+
+        /* ── Cinema header ── */
+        .cinema-header {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+            height: 88px; display: flex; align-items: center; justify-content: space-between;
+            padding: 0 2rem;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+        .cinema-header.hidden {
+            opacity: 0;
+            transform: translateY(-100%);
+            pointer-events: none;
         }
         .back-btn {
-            background: #6c757d; color: white; padding: 8px 16px;
-            border: none; border-radius: 4px; text-decoration: none;
-            margin-bottom: 15px; display: inline-block; cursor: pointer;
+            display: flex; align-items: center; gap: 0.5rem;
+            background: rgba(42,42,42,0.5); backdrop-filter: blur(16px);
+            border: none; border-radius: 9999px;
+            color: rgba(255,255,255,0.85); font-family: 'Inter', sans-serif;
+            font-size: 0.72rem; font-weight: 500; padding: 0.5rem 1.1rem;
+            cursor: pointer; text-decoration: none; transition: all 0.15s;
+            text-transform: uppercase; letter-spacing: 0.05em;
         }
-        .back-btn:hover { background: #5a6268; color: white; text-decoration: none; }
-
-        .section-label {
-            font-size: 11px; font-weight: bold; text-transform: uppercase;
-            color: #aaa; letter-spacing: 1px; margin-right: 4px; white-space: nowrap;
+        .back-btn:hover { background: rgba(42,42,42,0.8); color: white; text-decoration: none; }
+        .header-brand {
+            font-family: 'Manrope', sans-serif; font-weight: 800; font-size: 0.85rem;
+            color: rgba(255,255,255,0.35); letter-spacing: -0.01em;
         }
-        .btn-row {
-            display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
-            padding: 10px 14px; border-radius: 5px; margin-bottom: 8px;
-        }
-        .btn-row.play-row   { background: #0f3460; }
-        .btn-row.ext-row    { background: #1a2a4a; }
-        .btn-row.copy-row   { background: #1a3a2a; }
 
-        .player-btn {
-            color: white; padding: 6px 12px; border: none; border-radius: 4px;
-            text-decoration: none; display: inline-flex; align-items: center;
-            gap: 5px; cursor: pointer; font-size: 12px; font-family: Arial, sans-serif;
-            transition: filter .15s;
-        }
-        .player-btn:hover   { filter: brightness(1.2); color: white; text-decoration: none; }
-        .player-btn.active  { outline: 2px solid #fff; }
-
-        .btn-hls-proxy  { background: #6f42c1; }
-        .btn-ts-proxy   { background: #0d6efd; }
-        .btn-hls-direct { background: #8e44ad; opacity:.85; }
-        .btn-ts-direct  { background: #1a6eb5; opacity:.85; }
-        .btn-vlc        { background: #f58220; }
-        .btn-copy       { background: #17a2b8; }
-        .btn-copy-stream{ background: #28a745; }
-        .btn-reload     { background: #495057; }
-
+        /* ── Status bar ── */
         #status-bar {
-            padding: 8px 12px; border-radius: 4px; margin-bottom: 10px;
-            font-size: 13px; display: none;
+            position: fixed; top: 5rem; left: 50%; transform: translateX(-50%);
+            z-index: 50; white-space: nowrap;
+            padding: 0.4rem 1.25rem; border-radius: 9999px;
+            font-size: 0.72rem; font-weight: 500; letter-spacing: 0.02em;
+            display: none;
         }
-        .s-loading { background:#0c3547; color:#b8daff; display:block !important; }
-        .s-live    { background:#155724; color:#d4edda; display:block !important; }
-        .s-playing { display:none !important; }
-        .s-error   { background:#721c24; color:#f8d7da; display:block !important; }
+        .s-loading { background: rgba(0,212,255,0.15); color: #00d4ff; display: block !important; }
+        .s-live    { background: rgba(0,212,255,0.08); color: #3cd7ff; display: block !important; }
+        .s-playing { display: none !important; }
+        .s-error   { background: rgba(147,0,10,0.5); color: #ffdad6; display: block !important; }
+
+        /* ── Bottom cinema control panel ── */
+        .cinema-controls {
+            position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%);
+            width: 92%; max-width: 1024px; z-index: 50;
+        }
+        .glass-panel {
+            background: rgba(42,42,42,0.7); backdrop-filter: blur(28px);
+            border-radius: 2rem;
+            border: 1px solid rgba(255,255,255,0.05);
+            box-shadow: 0 24px 60px rgba(0,0,0,0.8), 0 0 40px rgba(0,212,255,0.04);
+            overflow: hidden;
+        }
+
+        /* ── Collapse handle ── */
+        .glass-panel-handle {
+            display: flex; flex-direction: column; align-items: center; gap: 0.25rem;
+            padding: 0.6rem 1.75rem 0;
+            cursor: pointer; user-select: none;
+        }
+        .glass-panel-handle:hover .handle-notch { background: rgba(255,255,255,0.28); }
+        .handle-notch {
+            width: 2.5rem; height: 4px; border-radius: 9999px;
+            background: rgba(255,255,255,0.14);
+            transition: background 0.15s;
+        }
+        .glass-panel-handle .handle-chevron {
+            font-size: 16px; color: rgba(255,255,255,0.35);
+            transition: transform 0.35s cubic-bezier(0.4,0,0.2,1);
+            line-height: 1;
+        }
+        .glass-panel.collapsed .handle-chevron { transform: rotate(180deg); }
+
+        /* ── Collapsible body ── */
+        .glass-panel-body {
+            display: flex; flex-direction: column; gap: 0.65rem;
+            padding: 0.65rem 1.75rem 1.2rem;
+            max-height: 400px;
+            overflow: hidden;
+            transition: max-height 0.35s cubic-bezier(0.4,0,0.2,1),
+                        padding 0.35s cubic-bezier(0.4,0,0.2,1),
+                        opacity 0.25s ease;
+            opacity: 1;
+        }
+        .glass-panel.collapsed .glass-panel-body {
+            max-height: 0;
+            padding-top: 0;
+            padding-bottom: 0;
+            opacity: 0;
+        }
+        /* Collapsed pill shows current mode label */
+        .collapsed-status {
+            display: none; align-items: center; justify-content: center;
+            padding: 0.1rem 0 0.75rem;
+            font-size: 0.65rem; font-weight: 600; letter-spacing: 0.08em;
+            text-transform: uppercase; color: rgba(255,255,255,0.3);
+        }
+        .glass-panel.collapsed .collapsed-status { display: flex; }
+
+        /* ── Control rows ── */
+        .ctrl-row {
+            display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
+        }
+        .ctrl-label {
+            font-size: 0.6rem; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.1em; color: rgba(255,255,255,0.2);
+            white-space: nowrap; min-width: 2.75rem;
+        }
+        .ctrl-divider {
+            height: 1px; background: rgba(255,255,255,0.04); margin: 0.05rem 0;
+        }
+
+        /* ── Player buttons ── */
+        .player-btn {
+            display: inline-flex; align-items: center; gap: 0.35rem;
+            padding: 0.4rem 0.85rem; border: none; border-radius: 9999px;
+            font-family: 'Inter', sans-serif; font-size: 0.7rem; font-weight: 500;
+            cursor: pointer; text-decoration: none; transition: all 0.15s;
+            color: rgba(255,255,255,0.75); background: rgba(53,53,52,0.9);
+            text-transform: uppercase; letter-spacing: 0.04em;
+        }
+        .player-btn:hover { filter: brightness(1.3); color: white; text-decoration: none; }
+        .player-btn.active {
+            background: #00d4ff !important; color: #003642 !important;
+            box-shadow: 0 0 20px rgba(0,212,255,0.4);
+        }
+        .btn-hls-proxy  { background: rgba(111,66,193,0.35); }
+        .btn-ts-proxy   { background: rgba(0,212,255,0.2); color: #a8e8ff; }
+        .btn-hls-direct { background: rgba(111,66,193,0.2); }
+        .btn-ts-direct  { background: rgba(0,150,200,0.2); }
+        .btn-vlc        { background: rgba(245,130,32,0.2); color: #ffba3d; }
+        .btn-copy       { background: rgba(0,212,255,0.12); color: #a8e8ff; }
+        .btn-copy-stream{ background: rgba(60,215,255,0.12); color: #3cd7ff; }
+        .btn-reload     { background: rgba(42,42,42,0.9); }
+        .player-btn .material-symbols-outlined { font-size: 14px; }
+
+        /* ── Ambient glow ── */
+        .ambient-glow {
+            position: fixed; bottom: 0; left: 20%; width: 60%; height: 220px;
+            background: radial-gradient(ellipse at center bottom, rgba(0,212,255,0.05) 0%, transparent 70%);
+            pointer-events: none; z-index: 5;
+        }
     </style>
 </head>
 <body>
-    <div style="width:100%;max-width:1200px;">
-        <a href="javascript:history.back()" class="back-btn">← Back</a>
-    </div>
 
-    <div class="video-container">
-        <div id="status-bar"></div>
+    <video id="videoEl" controls autoplay playsinline></video>
 
-        <!-- Play mode selector (live TV only) -->
-        <div id="live-controls" style="display:none;">
-            <div class="btn-row play-row">
-                <span class="section-label">▶ Play via:</span>
-                <button id="btn-hls-proxy"  class="player-btn btn-hls-proxy"  onclick="play('hls','proxy')">HLS + Proxy</button>
-                <button id="btn-ts-proxy"   class="player-btn btn-ts-proxy"   onclick="play('ts','proxy')">TS + Proxy</button>
-                <button id="btn-hls-direct" class="player-btn btn-hls-direct" onclick="play('hls','direct')">HLS Direct</button>
-                <button id="btn-ts-direct"  class="player-btn btn-ts-direct"  onclick="play('ts','direct')">TS Direct</button>
+    <div class="canvas-top-gradient"></div>
+    <div class="canvas-bottom-gradient"></div>
+    <div class="ambient-glow"></div>
+
+    <header class="cinema-header">
+        <a href="javascript:history.back()" class="back-btn">
+            <span class="material-symbols-outlined" style="font-size:14px;">arrow_back</span>
+            Back
+        </a>
+        <span class="header-brand">m3u.guide</span>
+    </header>
+
+    <div id="status-bar"></div>
+
+    <div class="cinema-controls">
+        <div class="glass-panel" id="glassPanel">
+
+            <!-- Drag handle / collapse toggle -->
+            <div class="glass-panel-handle" onclick="toggleControls()">
+                <div class="handle-notch"></div>
+                <span class="material-symbols-outlined handle-chevron">expand_less</span>
             </div>
-        </div>
 
-        <video id="videoEl" controls autoplay></video>
+            <!-- Collapsed pill label -->
+            <div class="collapsed-status" id="collapsedStatus">Tap to show controls</div>
 
-        <!-- External / copy row -->
-        <div class="btn-row ext-row" style="margin-top:10px;">
-            <span class="section-label">VLC:</span>
-            <a id="vlc-proxy-btn"  href="#" class="player-btn btn-vlc">🎬 VLC (Proxy)</a>
-            <a id="vlc-direct-btn" href="#" class="player-btn btn-vlc" style="opacity:.8;">🎬 VLC (Direct)</a>
-            <a id="vlc-ios-btn"    href="#" class="player-btn btn-vlc" style="opacity:.8;">📱 VLC iOS</a>
-        </div>
-        <div class="btn-row copy-row">
-            <span class="section-label">Copy:</span>
-            <button onclick="copyProxyUrl('ts')"    class="player-btn btn-copy">📋 Proxy TS URL</button>
-            <button onclick="copyProxyUrl('hls')"   class="player-btn btn-copy">📋 Proxy HLS URL</button>
-            <button onclick="copyDirect('ts')"      class="player-btn btn-copy-stream">📋 Direct TS URL</button>
-            <button onclick="copyDirect('hls')"     class="player-btn btn-copy-stream">📋 Direct HLS URL</button>
-            <button onclick="reloadPlayer()"        class="player-btn btn-reload">↺ Reload</button>
+            <!-- All controls wrapped in collapsible body -->
+            <div class="glass-panel-body">
+
+                <!-- Play mode row (live only) -->
+                <div id="live-controls" style="display:none;">
+                    <div class="ctrl-row">
+                        <span class="ctrl-label">Play via</span>
+                        <button id="btn-hls-proxy"  class="player-btn btn-hls-proxy"  onclick="play('hls','proxy')">
+                            <span class="material-symbols-outlined">play_circle</span> HLS + Proxy
+                        </button>
+                        <button id="btn-ts-proxy"   class="player-btn btn-ts-proxy"   onclick="play('ts','proxy')">
+                            <span class="material-symbols-outlined">play_circle</span> TS + Proxy
+                        </button>
+                        <button id="btn-hls-direct" class="player-btn btn-hls-direct" onclick="play('hls','direct')">
+                            <span class="material-symbols-outlined">wifi</span> HLS Direct
+                        </button>
+                        <button id="btn-ts-direct"  class="player-btn btn-ts-direct"  onclick="play('ts','direct')">
+                            <span class="material-symbols-outlined">wifi</span> TS Direct
+                        </button>
+                    </div>
+                    <div class="ctrl-divider" style="margin-top:0.65rem;"></div>
+                </div>
+
+                <!-- VLC row -->
+                <div class="ctrl-row">
+                    <span class="ctrl-label">VLC</span>
+                    <a id="vlc-proxy-btn"  href="#" class="player-btn btn-vlc">
+                        <span class="material-symbols-outlined">videocam</span> Proxy
+                    </a>
+                    <a id="vlc-direct-btn" href="#" class="player-btn btn-vlc" style="opacity:0.75;">
+                        <span class="material-symbols-outlined">videocam</span> Direct
+                    </a>
+                    <a id="vlc-ios-btn"    href="#" class="player-btn btn-vlc" style="opacity:0.75;">
+                        <span class="material-symbols-outlined">phone_iphone</span> iOS
+                    </a>
+                </div>
+
+                <div class="ctrl-divider"></div>
+
+                <!-- Copy row -->
+                <div class="ctrl-row">
+                    <span class="ctrl-label">Copy</span>
+                    <button onclick="copyProxyUrl('ts')"  class="player-btn btn-copy">
+                        <span class="material-symbols-outlined">content_copy</span> Proxy TS
+                    </button>
+                    <button onclick="copyProxyUrl('hls')" class="player-btn btn-copy">
+                        <span class="material-symbols-outlined">content_copy</span> Proxy HLS
+                    </button>
+                    <button onclick="copyDirect('ts')"    class="player-btn btn-copy-stream">
+                        <span class="material-symbols-outlined">content_copy</span> Direct TS
+                    </button>
+                    <button onclick="copyDirect('hls')"   class="player-btn btn-copy-stream">
+                        <span class="material-symbols-outlined">content_copy</span> Direct HLS
+                    </button>
+                    <button onclick="reloadPlayer()"      class="player-btn btn-reload">
+                        <span class="material-symbols-outlined">refresh</span> Reload
+                    </button>
+                </div>
+
+            </div>
         </div>
     </div>
 
     <script>
         const originalVideoUrl = "{{ video_url }}";
 
-        // Derive .ts and .m3u8 variants from whatever URL we got
         function toTs(u)  { return u.replace(/\.m3u8(\?.*)?$/i, '.ts$1'); }
         function toHls(u) { return u.replace(/\.ts(\?.*)?$/i,   '.m3u8$1'); }
 
@@ -124,12 +285,10 @@
         const urlLower = originalVideoUrl.toLowerCase();
         const isLive   = urlLower.endsWith('.ts') || urlLower.endsWith('.m3u8') || urlLower.includes('/live/');
 
-        // Wire up VLC links
         document.getElementById('vlc-proxy-btn').href  = 'vlc://' + tsProxy;
         document.getElementById('vlc-direct-btn').href = 'vlc://' + tsUrl;
         document.getElementById('vlc-ios-btn').href    = 'vlc-x-callback://x-callback-url/stream?url=' + encodeURIComponent(tsProxy);
 
-        // Show live controls if needed
         if (isLive) document.getElementById('live-controls').style.display = 'block';
 
         const video     = document.getElementById('videoEl');
@@ -142,6 +301,7 @@
         function setStatus(msg, type) {
             statusBar.textContent = msg;
             statusBar.className   = 's-' + type;
+            if (type === 'playing') scheduleAutoCollapse();
         }
 
         function destroyPlayers() {
@@ -149,38 +309,30 @@
             if (hlsPlayer)    { try { hlsPlayer.destroy();    } catch(e){} hlsPlayer    = null; }
             video.removeAttribute('src');
             video.load();
-            // Clear active button highlight
-            document.querySelectorAll('.play-row .player-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('#live-controls .player-btn').forEach(b => b.classList.remove('active'));
         }
 
         function play(format, via) {
             destroyPlayers();
             activeMode = { format, via };
-
-            const btnId = 'btn-' + format + '-' + via;
-            const btn   = document.getElementById(btnId);
+            const btn = document.getElementById('btn-' + format + '-' + via);
             if (btn) btn.classList.add('active');
 
             const streamUrl = via === 'proxy'
                 ? (format === 'hls' ? hlsProxy : tsProxy)
                 : (format === 'hls' ? hlsUrl   : tsUrl);
 
-            if (format === 'hls') {
-                loadHls(streamUrl);
-            } else {
-                loadTs(streamUrl);
-            }
+            if (format === 'hls') loadHls(streamUrl);
+            else                  loadTs(streamUrl);
         }
 
         function loadTs(url) {
             if (!mpegts.getFeatureList().mseLivePlayback) {
-                setStatus('⚠ MSE not supported in this browser — try HLS or VLC.', 'error');
+                setStatus('MSE not supported — try HLS or VLC.', 'error');
                 return;
             }
-            setStatus('📺 Buffering MPEG-TS stream…', 'loading');
-            mpegtsPlayer = mpegts.createPlayer({
-                type: 'mse', isLive: true, url
-            }, {
+            setStatus('Buffering MPEG-TS stream…', 'loading');
+            mpegtsPlayer = mpegts.createPlayer({ type: 'mse', isLive: true, url }, {
                 enableWorker: true,
                 liveBufferLatencyChasing:    true,
                 liveBufferLatencyMaxLatency: 10,
@@ -192,33 +344,29 @@
             mpegtsPlayer.on(mpegts.Events.STATISTICS_INFO, () => setStatus('', 'playing'));
             mpegtsPlayer.on(mpegts.Events.ERROR, (et, ed) => {
                 const msg = (ed && ed.msg) ? ed.msg : et;
-                setStatus('⚠ TS error: ' + msg + ' — try HLS or VLC (Proxy).', 'error');
+                setStatus('TS error: ' + msg + ' — try HLS or VLC (Proxy).', 'error');
             });
         }
 
         function loadHls(url) {
-            // Native HLS (Safari)
             if (!Hls.isSupported() && video.canPlayType('application/vnd.apple.mpegurl')) {
-                setStatus('▶ Loading HLS (native)…', 'loading');
+                setStatus('Loading HLS (native)…', 'loading');
                 video.src = url;
                 video.play();
                 video.addEventListener('playing', () => setStatus('', 'playing'), { once: true });
                 return;
             }
             if (!Hls.isSupported()) {
-                setStatus('⚠ HLS not supported — try TS or VLC.', 'error');
+                setStatus('HLS not supported — try TS or VLC.', 'error');
                 return;
             }
-            setStatus('▶ Loading HLS stream…', 'loading');
+            setStatus('Loading HLS stream…', 'loading');
             hlsPlayer = new Hls({ lowLatencyMode: true });
             hlsPlayer.attachMedia(video);
             hlsPlayer.loadSource(url);
-            hlsPlayer.on(Hls.Events.MANIFEST_PARSED, () => {
-                video.play();
-                setStatus('', 'playing');
-            });
+            hlsPlayer.on(Hls.Events.MANIFEST_PARSED, () => { video.play(); setStatus('', 'playing'); });
             hlsPlayer.on(Hls.Events.ERROR, (e, data) => {
-                if (data.fatal) setStatus('⚠ HLS error: ' + data.details + ' — try TS or VLC (Proxy).', 'error');
+                if (data.fatal) setStatus('HLS error: ' + data.details + ' — try TS or VLC (Proxy).', 'error');
             });
         }
 
@@ -229,11 +377,9 @@
 
         function initialLoad() {
             if (isLive) {
-                // TS + Proxy is the confirmed working mode for live TV
                 play('ts', 'proxy');
             } else {
-                // VOD — use proxy, native video element
-                setStatus('▶ Loading…', 'loading');
+                setStatus('Loading…', 'loading');
                 video.src = proxyBase + encodeURIComponent(originalVideoUrl);
                 video.play();
                 video.addEventListener('playing', () => setStatus('', 'playing'), { once: true });
@@ -241,12 +387,10 @@
         }
 
         function copyProxyUrl(format) {
-            writeToClipboard(format === 'hls' ? hlsProxy : tsProxy,
-                             (format.toUpperCase()) + ' proxy URL copied!');
+            writeToClipboard(format === 'hls' ? hlsProxy : tsProxy, format.toUpperCase() + ' proxy URL copied!');
         }
         function copyDirect(format) {
-            writeToClipboard(format === 'hls' ? hlsUrl : tsUrl,
-                             (format.toUpperCase()) + ' direct URL copied!');
+            writeToClipboard(format === 'hls' ? hlsUrl : tsUrl, format.toUpperCase() + ' direct URL copied!');
         }
         function writeToClipboard(text, msg) {
             if (navigator.clipboard && window.isSecureContext) {
@@ -260,6 +404,43 @@
                 document.body.removeChild(ta);
             }
         }
+
+        // ── Controls collapse ──
+        const glassPanel = document.getElementById('glassPanel');
+        const cinemaHeader = document.querySelector('.cinema-header');
+
+        let autoCollapseTimer = null;
+        let userExpanded = false; // true = user manually opened, suppress auto-collapse
+
+        function setUICollapsed(collapsed) {
+            glassPanel.classList.toggle('collapsed', collapsed);
+            cinemaHeader.classList.toggle('hidden', collapsed);
+        }
+
+        function toggleControls() {
+            const willCollapse = !glassPanel.classList.contains('collapsed');
+            setUICollapsed(willCollapse);
+            userExpanded = !willCollapse;
+            if (userExpanded) clearTimeout(autoCollapseTimer); // don't auto-close after manual expand
+        }
+
+        // Auto-collapse after 4s — only if user hasn't manually expanded
+        function scheduleAutoCollapse() {
+            if (userExpanded) return;
+            clearTimeout(autoCollapseTimer);
+            autoCollapseTimer = setTimeout(() => {
+                if (!glassPanel.classList.contains('collapsed')) {
+                    setUICollapsed(true);
+                }
+            }, 4000);
+        }
+
+        // Restore controls when returning from Picture-in-Picture
+        document.getElementById('videoEl').addEventListener('leavepictureinpicture', () => {
+            userExpanded = false;
+            setUICollapsed(false);
+            scheduleAutoCollapse();
+        });
 
         initialLoad();
     </script>

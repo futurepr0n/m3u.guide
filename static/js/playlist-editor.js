@@ -55,33 +55,11 @@ function attachEventListeners() {
     });
 }
 
-function displayGroupChannels(groupId) {
-    console.log('Displaying channels for group:', groupId);
-    
-    // Update selection state
-    document.querySelectorAll('#groupList .list-item').forEach(item => {
-        item.classList.remove('selected');
-    });
-    
-    const selectedItem = document.querySelector(`#groupList .list-item[data-group-id="${groupId}"]`);
-    if (selectedItem) {
-        selectedItem.classList.add('selected');
-    }
-    
-    // Store selected group
-    currentState.selectedGroup = groupId;
-    
-    // Get the channels for this group
+function renderChannels(groupId) {
     const group = currentState.groups[groupId];
-    if (!group || !group.channels) {
-        console.error('No channels found for group:', groupId);
-        return;
-    }
-
     const channelList = document.getElementById('channelList');
-    channelList.innerHTML = ''; // Clear current channels
-    
-    // Add each channel to the list
+    channelList.innerHTML = '';
+
     group.channels.forEach((channel, idx) => {
         const channelItem = document.createElement('div');
         channelItem.className = 'list-item';
@@ -148,9 +126,47 @@ function displayGroupChannels(groupId) {
         channelList.appendChild(channelItem);
     });
     
-    // Update header to show current group and channel count
     const channelPanelHeader = document.querySelector('.panel:nth-child(2) .panel-header h2');
-    channelPanelHeader.textContent = `Channels - ${group.name} (${group.channels.length})`;
+    channelPanelHeader.textContent = `Channels — ${group.name} (${group.channels.length})`;
+}
+
+function displayGroupChannels(groupId) {
+    // Update selection state
+    document.querySelectorAll('#groupList .list-item').forEach(item => item.classList.remove('selected'));
+    const selectedItem = document.querySelector(`#groupList .list-item[data-group-id="${groupId}"]`);
+    if (selectedItem) selectedItem.classList.add('selected');
+
+    currentState.selectedGroup = groupId;
+    const group = currentState.groups[groupId];
+
+    // Already loaded — render immediately
+    if (group.channels) {
+        renderChannels(groupId);
+        return;
+    }
+
+    // Lazy-fetch channels for this group
+    const channelList = document.getElementById('channelList');
+    channelList.innerHTML = '<div class="empty-state">Loading…</div>';
+
+    const pathParts = window.location.pathname.split('/');
+    const userId = pathParts[2];
+    const playlistName = pathParts.slice(3, -1).join('/'); // strip trailing /edit
+
+    fetch(`/playlist/${userId}/${playlistName}/group/${groupId}/channels`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) { channelList.innerHTML = `<div class="empty-state">${data.error}</div>`; return; }
+            group.channels = data.channels;
+            // Mirror into originalData so reset works correctly
+            currentState.originalData[groupId].channels = JSON.parse(JSON.stringify(data.channels));
+            renderChannels(groupId);
+            updateStats();
+        })
+        .catch(err => {
+            channelList.innerHTML = '<div class="empty-state">Failed to load channels</div>';
+            console.error(err);
+        });
 }
 
 function toggleGroupVisibility(groupId, event) {
@@ -168,10 +184,10 @@ function toggleGroupVisibility(groupId, event) {
         icon.classList.replace('fa-eye', 'fa-eye-slash');
     }
 
-    // Toggle all channels in the group
-    group.channels.forEach(channel => {
-        channel.visible = group.visible;
-    });
+    // Toggle loaded channels (unloaded groups handled by save endpoint)
+    if (group.channels) {
+        group.channels.forEach(channel => { channel.visible = group.visible; });
+    }
 
     if (currentState.selectedGroup === groupId) {
         displayGroupChannels(groupId);
@@ -209,7 +225,7 @@ function removeGroup(groupId, event) {
 
     const group = currentState.groups[groupId];
     group.visible = false;
-    group.channels.forEach(channel => channel.visible = false);
+    if (group.channels) group.channels.forEach(channel => { channel.visible = false; });
 
     // Update UI
     document.querySelector(`#groupList .list-item[data-group-id="${groupId}"] .eye-btn`)
@@ -277,9 +293,10 @@ function editChannel(button, event) {
 
 function updateStats() {
     const visibleChannels = currentState.groups.reduce((total, group) => {
-        return total + (group.channels ? group.channels.filter(channel => channel.visible).length : 0);
+        if (!group.visible) return total;
+        if (!group.channels) return total + group.channel_count; // unloaded = assume all visible
+        return total + group.channels.filter(ch => ch.visible).length;
     }, 0);
-    
     document.getElementById('visibleChannels').textContent = visibleChannels;
 }
 
@@ -304,12 +321,11 @@ function saveChanges() {
     const data = {
         groups: currentState.groups.map(group => ({
             name: group.name,
-            visible: group.visible !== false, // Default to true if undefined
-            channels: group.channels.map(channel => ({
-                extinf: channel.extinf,
-                url: channel.url,
-                visible: channel.visible !== false // Default to true if undefined
-            }))
+            visible: group.visible !== false,
+            // null = group never opened; server copies from original M3U
+            channels: group.channels
+                ? group.channels.map(ch => ({ extinf: ch.extinf, url: ch.url, visible: ch.visible !== false }))
+                : null
         }))
     };
 
@@ -448,13 +464,12 @@ function toggleAllGroups(enable) {
             icon.classList.replace('fa-eye', 'fa-eye-slash');
         }
         
-        // Update all channels in the group
-        group.channels.forEach(channel => {
-            channel.visible = enable;
-        });
+        // Update loaded channels only (unloaded groups handled by save endpoint)
+        if (group.channels) {
+            group.channels.forEach(channel => { channel.visible = enable; });
+        }
     });
 
-    // If there's a selected group, refresh its channel display
     if (currentState.selectedGroup !== null) {
         displayGroupChannels(currentState.selectedGroup);
     }
@@ -513,39 +528,4 @@ function toggleAllChannels(enable) {
     markChanges();
 }
 
-function downloadEditedPlaylist() {
-    // Get current URL path components
-    const pathComponents = window.location.pathname.split('/');
-    const userId = pathComponents[2];
-    const playlistName = decodeURIComponent(pathComponents[3]);
-    
-    // Update the URL to match the actual file location
-    const downloadUrl = `/static/playlists/${userId}/${playlistName}_edit/tv.m3u`;
-    
-    fetch(downloadUrl, {
-        method: 'GET',  // Changed to GET since we're directly accessing the file
-        headers: {
-            'Content-Type': 'application/json',
-        }
-    })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        return response.blob();
-    })
-    .then(blob => {
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'tv.m3u';  // Simplified download filename
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-    })
-    .catch(error => {
-        console.error('Error downloading playlist:', error);
-        alert('Error downloading playlist: ' + error.message);
-    });
-}
+// Download and Copy URL are handled in playlist_editor.html (downloadEdited / copyEditedUrl)

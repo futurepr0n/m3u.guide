@@ -1,151 +1,414 @@
 <!DOCTYPE html>
-<html lang="en">
-
+<html class="dark" lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Playlist Manager</title>
+    <title>m3u.guide — Your Vault</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jquery-modal/0.9.1/jquery.modal.min.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <script>
+        tailwind.config = {
+            darkMode: "class",
+            theme: { extend: { fontFamily: { "headline": ["Manrope"], "body": ["Inter"] } } }
+        }
+    </script>
+    <style>
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+        body { background-color: #131313; color: #e5e2e1; font-family: 'Inter', sans-serif; }
+
+        /* ── Modal overrides ── */
+        .jquery-modal.blocker { background: rgba(0,0,0,0.82) !important; backdrop-filter: blur(6px); }
+        .modal {
+            background: #1c1b1b !important; border-radius: 0.75rem !important;
+            padding: 2rem !important; width: 90% !important; max-width: 460px !important;
+            border: 1px solid rgba(255,255,255,0.06) !important;
+            box-shadow: 0 24px 60px rgba(0,0,0,0.7) !important;
+        }
+        .modal h2 {
+            font-family: 'Manrope', sans-serif; font-weight: 800; font-size: 1.2rem;
+            color: #e5e2e1; margin-bottom: 1.5rem; letter-spacing: -0.02em;
+        }
+        .modal-header { margin-bottom: 0; }
+        .modal .form-group { margin-bottom: 1rem; }
+        .modal .form-group label {
+            display: block; font-size: 0.7rem; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.08em; color: #bbc9cf; margin-bottom: 0.4rem;
+        }
+        .modal .form-group input, .modal .form-group select {
+            width: 100%; background: #0e0e0e; border: none; border-radius: 9999px;
+            padding: 0.7rem 1.2rem; color: #e5e2e1; font-size: 0.875rem;
+            font-family: 'Inter', sans-serif; outline: none; transition: box-shadow 0.2s;
+        }
+        .modal .form-group input:focus, .modal .form-group select:focus { box-shadow: 0 0 0 2px #00d4ff; }
+        .modal .form-group select option { background: #1c1b1b; }
+        .modal .form-group input[type="file"] { border-radius: 0.5rem; padding: 0.5rem 0.75rem; }
+        .modal .form-group input[type="checkbox"] { display: none; }
+        .xtream-toggle {
+            display: flex; align-items: center; gap: 0.6rem; width: 100%;
+            padding: 0.55rem 0.85rem; background: #0e0e0e;
+            border: 1px solid rgba(255,255,255,0.08); border-radius: 0.5rem;
+            color: rgba(255,255,255,0.45); font-size: 0.82rem; cursor: pointer;
+            transition: all 0.15s; text-align: left; font-family: 'Inter', sans-serif;
+            margin-bottom: 0.4rem;
+        }
+        .xtream-toggle:hover { border-color: rgba(255,255,255,0.18); color: rgba(255,255,255,0.7); }
+        .xtream-toggle.active { background: rgba(0,212,255,0.08); border-color: #00d4ff; color: #00d4ff; }
+        .toggle-box {
+            width: 15px; height: 15px; border-radius: 3px; border: 1.5px solid currentColor;
+            flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 10px;
+        }
+        .xtream-toggle.active .toggle-box::after { content: '✓'; }
+        .modal .button-group { display: flex; gap: 0.75rem; margin-top: 1.5rem; }
+        .modal .btn {
+            flex: 1; padding: 0.7rem 1.5rem;
+            background: linear-gradient(135deg, #00d4ff, #a8e8ff); color: #003642; border: none;
+            border-radius: 9999px; font-family: 'Manrope', sans-serif; font-weight: 700;
+            font-size: 0.875rem; cursor: pointer; transition: opacity 0.2s;
+        }
+        .modal .btn:hover { opacity: 0.85; }
+        .modal .btn-secondary {
+            flex: 1; padding: 0.7rem 1.5rem; background: #353534; color: #e5e2e1;
+            border: none; border-radius: 9999px; font-family: 'Manrope', sans-serif;
+            font-weight: 600; font-size: 0.875rem; cursor: pointer; transition: background 0.2s;
+        }
+        .modal .btn-secondary:hover { background: #2a2a2a; }
+
+        /* ── Processing overlay ── */
+        #processingStatus {
+            position: fixed; inset: 0; z-index: 9999;
+            background: rgba(14,14,14,0.92); backdrop-filter: blur(10px);
+            display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.25rem;
+        }
+        #spinner {
+            width: 44px; height: 44px; border: 3px solid #353534;
+            border-top-color: #00d4ff; border-radius: 50%;
+            animation: spin 0.8s linear infinite; flex-shrink: 0;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        #processingCard {
+            background: #1c1b1b; border: 1px solid rgba(255,255,255,0.06); border-radius: 0.75rem;
+            padding: 1.5rem 1.75rem; width: min(90vw, 400px); display: flex; flex-direction: column; gap: 0.75rem;
+        }
+        #statusMessage {
+            font-size: 0.85rem; font-weight: 600; color: #e5e2e1;
+            font-family: 'Manrope', sans-serif; letter-spacing: -0.01em;
+        }
+        #processingSteps { min-height: 2.5rem; }
+        #processingSteps div { font-size: 0.68rem; color: rgba(255,255,255,0.32); padding: 0.1rem 0; font-family: 'Inter', sans-serif; }
+        #processingFooter { display: flex; justify-content: space-between; align-items: center; margin-top: 0.25rem; }
+        #processingElapsed { font-size: 0.62rem; color: rgba(255,255,255,0.22); font-family: 'Inter', sans-serif; }
+        #processingHint { font-size: 0.62rem; color: rgba(255,255,255,0.22); font-family: 'Inter', sans-serif; text-align: right; }
+
+        /* ── Playlist cards ── */
+        .ambient-glow:hover { box-shadow: 0 0 32px rgba(0,212,255,0.08); }
+        .action-chip {
+            padding: 0.3rem 0.75rem; border-radius: 9999px; background: #353534;
+            color: rgba(255,255,255,0.6); border: none; font-family: 'Inter', sans-serif;
+            font-size: 0.68rem; font-weight: 500; cursor: pointer; transition: all 0.15s;
+            text-transform: uppercase; letter-spacing: 0.05em;
+        }
+        .action-chip:hover:not(:disabled) { background: #2a2a2a; color: white; }
+        .action-chip-primary { background: rgba(0,212,255,0.12); color: #00d4ff; }
+        .action-chip-primary:hover:not(:disabled) { background: #00d4ff !important; color: #003642 !important; }
+        .action-chip-accent { background: rgba(168,232,255,0.1); color: #a8e8ff; }
+        .action-chip-accent:hover:not(:disabled) { background: #00d4ff !important; color: #003642 !important; }
+        .action-chip-danger:hover:not(:disabled) { background: rgba(147,0,10,0.5) !important; color: #ffdad6 !important; }
+        .action-chip:disabled { opacity: 0.3; cursor: not-allowed; }
+    </style>
 </head>
+<body class="min-h-screen">
 
-<body>
-    <a href="{{ url_for('auth.logout') }}" class="logout-btn">Logout</a>
-    <button onclick="$('#createPlaylistModal').modal('show')" class="create-btn">Create Playlist</button>
+    <!-- Top App Bar -->
+    <header class="fixed top-0 w-full z-50 flex justify-between items-center px-6 h-16 bg-[#131313]/95 backdrop-blur-xl">
+        <div class="flex items-center gap-3">
+            <span class="material-symbols-outlined text-[#00d4ff]" style="font-variation-settings: 'FILL' 1;">radio</span>
+            <h1 class="text-lg font-black text-white tracking-tighter font-headline">m3u.guide</h1>
+        </div>
+        <a href="{{ url_for('auth.logout') }}" class="flex items-center gap-2 text-white/40 hover:text-white/80 transition-colors text-xs font-body uppercase tracking-wider">
+            <span class="material-symbols-outlined" style="font-size: 18px;">logout</span>
+            <span class="hidden sm:inline">Logout</span>
+        </a>
+    </header>
 
-    <table>
-        <thead>
-            <tr>
-                <th>Name</th>
-                <th>Source</th>
-                <th>Channels</th>
-                <th>With EPG</th>
-                <th>Movies</th>
-                <th>Series</th>
-                <th>Unmatched</th>
-                <th data-column="command">Command</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody id="playlistTableBody">
-        </tbody>
-    </table>
+    <main class="pt-20 pb-24 px-4 md:px-8 max-w-7xl mx-auto">
 
-    <!-- Create Playlist Modal -->
+        <!-- Hero -->
+        <section class="mb-10 relative overflow-hidden rounded-xl h-52 flex items-end p-8" style="background: #201f1f;">
+            <div class="absolute inset-0" style="background: linear-gradient(135deg, #131313 0%, #1c1b1b 50%, rgba(0,212,255,0.06) 100%);"></div>
+            <div class="relative z-10 w-full flex flex-col sm:flex-row sm:items-end justify-between gap-5">
+                <div>
+                    <span class="text-xs font-bold tracking-widest uppercase mb-2 block font-headline" style="color: #00d4ff;">Your Media Library</span>
+                    <h2 class="text-4xl font-black text-white tracking-tight font-headline" style="letter-spacing: -0.03em;">Your Vault</h2>
+                    <p class="mt-1 text-sm font-body" style="color: #bbc9cf;">Manage IPTV playlists and stream worldwide content.</p>
+                </div>
+                <button onclick="$('#createPlaylistModal').modal('show')"
+                    class="flex items-center gap-2 px-6 py-3 rounded-full font-bold text-sm whitespace-nowrap active:scale-95 transition-transform font-headline"
+                    style="background: linear-gradient(135deg, #00d4ff, #a8e8ff); color: #003642; box-shadow: 0 8px 24px rgba(0,212,255,0.2);">
+                    <span class="material-symbols-outlined" style="font-size: 18px;">add</span>
+                    Add Playlist
+                </button>
+            </div>
+        </section>
+
+        <!-- Playlist Grid -->
+        <div id="playlistGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div class="col-span-full flex items-center justify-center py-20 text-sm font-body" style="color: #bbc9cf;">
+                <span class="material-symbols-outlined mr-3" style="color: #00d4ff; animation: spin 1s linear infinite;">sync</span>
+                Loading playlists...
+            </div>
+        </div>
+
+    </main>
+
+    <!-- ── Modals ── -->
+
     <div id="createPlaylistModal" class="modal">
-        <div class="modal-header">
-            <h2>Create a new playlist</h2>
-        </div>
-        <div class="modal-body">
-            <form id="createPlaylistForm">
-                <div class="form-group">
-                    <label for="playlistName">Name *</label>
-                    <input type="text" id="playlistName" name="name" required>
-                </div>
-                <div class="form-group">
-                    <label>Source of playlist</label>
-                    <select id="playlistSource" name="source" required>
-                        <option value="">Select Source</option>
-                        <option value="Xtream API">Xtream API (Modern)</option>
-                        <option value="API Line">API Line (Legacy)</option>
-                        <option value="M3U Url">M3U Url</option>
-                        <option value="M3U File">Upload M3U file</option>
-                    </select>
-                </div>
-                <div class="button-group">
-                    <button type="button" onclick="nextStep()" class="btn">Next</button>
-                    <button type="button" onclick="$.modal.close()" class="btn-secondary">Cancel</button>
-                </div>
-            </form>
-        </div>
+        <div class="modal-header"><h2>Create a new playlist</h2></div>
+        <form id="createPlaylistForm">
+            <div class="form-group">
+                <label for="playlistName">Name</label>
+                <input type="text" id="playlistName" name="name" placeholder="My Playlist" required>
+            </div>
+            <div class="form-group">
+                <label>Source</label>
+                <select id="playlistSource" name="source" required>
+                    <option value="">Select source type</option>
+                    <option value="Xtream API">Xtream API (Modern)</option>
+                    <option value="API Line">API Line (Legacy)</option>
+                    <option value="M3U Url">M3U URL</option>
+                    <option value="M3U File">Upload M3U File</option>
+                </select>
+            </div>
+            <div class="button-group">
+                <button type="button" onclick="nextStep()" class="btn">Next</button>
+                <button type="button" onclick="$.modal.close()" class="btn-secondary">Cancel</button>
+            </div>
+        </form>
     </div>
 
-    <!-- API Line Modal -->
     <div id="apiLineModal" class="modal">
-        <div class="modal-header">
-            <h2>API Line Details</h2>
-        </div>
-        <div class="form-group">
-            <input type="text" id="server" placeholder="Server">
-            <input type="text" id="username" placeholder="Username">
-            <input type="password" id="password" placeholder="Password">
-        </div>
+        <div class="modal-header"><h2>API Line Details</h2></div>
+        <div class="form-group"><label>Server</label><input type="text" id="server" placeholder="http://provider.com:8080"></div>
+        <div class="form-group"><label>Username</label><input type="text" id="username" placeholder="username"></div>
+        <div class="form-group"><label>Password</label><input type="password" id="password" placeholder="password"></div>
         <div class="button-group">
             <button onclick="submitApiLine()" class="btn">Save</button>
             <button onclick="$.modal.close()" class="btn-secondary">Cancel</button>
         </div>
     </div>
 
-    <!-- M3U URL Modal -->
     <div id="m3uUrlModal" class="modal">
-        <div class="modal-header">
-            <h2>M3U URL</h2>
-        </div>
-        <div class="form-group">
-            <input type="url" id="m3uUrl" placeholder="M3U URL">
-            <input type="url" id="epgUrl" placeholder="EPG URL">
-        </div>
+        <div class="modal-header"><h2>M3U URL</h2></div>
+        <div class="form-group"><label>M3U URL</label><input type="url" id="m3uUrl" placeholder="https://provider.com/playlist.m3u"></div>
+        <div class="form-group"><label>EPG URL (optional)</label><input type="url" id="epgUrl" placeholder="https://provider.com/epg.xml"></div>
         <div class="button-group">
             <button onclick="submitM3uUrl()" class="btn">Save</button>
             <button onclick="$.modal.close()" class="btn-secondary">Cancel</button>
         </div>
     </div>
 
-    <!-- M3U File Modal -->
     <div id="m3uFileModal" class="modal">
-        <div class="modal-header">
-            <h2>Upload M3U File</h2>
-        </div>
-        <div class="form-group">
-            <input type="file" id="m3uFile" accept=".m3u,.m3u8">
-            <input type="file" id="epgFile" accept=".xml">
-        </div>
+        <div class="modal-header"><h2>Upload M3U File</h2></div>
+        <div class="form-group"><label>M3U File</label><input type="file" id="m3uFile" accept=".m3u,.m3u8"></div>
+        <div class="form-group"><label>EPG File (optional)</label><input type="file" id="epgFile" accept=".xml"></div>
         <div class="button-group">
             <button onclick="submitM3uFile()" class="btn">Save</button>
             <button onclick="$.modal.close()" class="btn-secondary">Cancel</button>
         </div>
     </div>
 
-    <!-- Xtream API Modal -->
     <div id="xtreamApiModal" class="modal">
-        <div class="modal-header">
-            <h2>Xtream API Details</h2>
-        </div>
-        <div class="form-group">
-            <input type="text" id="xtream_server" placeholder="Server (e.g., http://provider.com:8080)">
-            <input type="text" id="xtream_username" placeholder="Username">
-            <input type="password" id="xtream_password" placeholder="Password">
-            <div class="checkbox-group" style="margin-top: 15px;">
-                <label>
-                    <input type="checkbox" id="include_vod"> Include VOD (Movies)
-                </label>
-            </div>
-            <div class="checkbox-group" style="margin-top: 10px;">
-                <label>
-                    <input type="checkbox" id="include_series"> Include Series (TV Shows)
-                </label>
-            </div>
-            <div class="checkbox-group" style="margin-top: 10px;">
-                <label>
-                    <input type="checkbox" id="include_proxy"> Proxy Stream URLs (Bypass Blocks)
-                </label>
-            </div>
+        <div class="modal-header"><h2>Xtream API Details</h2></div>
+        <div class="form-group"><label>Server</label><input type="text" id="xtream_server" placeholder="http://provider.com:8080"></div>
+        <div class="form-group"><label>Username</label><input type="text" id="xtream_username" placeholder="username"></div>
+        <div class="form-group"><label>Password</label><input type="password" id="xtream_password" placeholder="password"></div>
+        <div class="form-group" style="margin-top: 1rem;">
+            <label>Options</label>
+            <button type="button" class="xtream-toggle" data-target="include_vod" onclick="toggleXtream(this)">
+                <span class="toggle-box"></span> Include VOD (Movies)
+            </button>
+            <button type="button" class="xtream-toggle" data-target="include_series" onclick="toggleXtream(this)">
+                <span class="toggle-box"></span> Include Series (TV Shows)
+            </button>
+            <button type="button" class="xtream-toggle" data-target="include_proxy" onclick="toggleXtream(this)">
+                <span class="toggle-box"></span> Proxy Stream URLs (Bypass Blocks)
+            </button>
+            <input type="checkbox" id="include_vod">
+            <input type="checkbox" id="include_series">
+            <input type="checkbox" id="include_proxy">
         </div>
         <div class="button-group">
-            <button onclick="submitXtreamApi()" class="btn">Save & Process</button>
+            <button onclick="submitXtreamApi()" class="btn">Save &amp; Process</button>
             <button onclick="$.modal.close()" class="btn-secondary">Cancel</button>
         </div>
     </div>
 
-    <div id="processingStatus" style="display: none; text-align: center; margin-top: 20px;">
-        <div id="spinner"></div>
-        <span id="statusMessage">Processing...</span>
+    <!-- Mirror Manager Modal -->
+    <div id="mirrorModal" class="modal">
+        <div class="modal-header"><h2>Alt Servers — <span id="mirrorModalTitle"></span></h2></div>
+
+        <div class="form-group">
+            <label>Stream base (auto-detected)</label>
+            <input type="text" id="mirrorStreamBase" readonly style="opacity:0.55; cursor:default; font-size:0.8rem;">
+            <div style="margin-top:0.4rem; font-size:0.65rem; color:rgba(255,255,255,0.3);">
+                This hostname is substituted in all stream URLs when a mirror is active.
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>Active Server</label>
+            <select id="mirrorActiveSelect"></select>
+        </div>
+
+        <div id="mirrorList" style="margin-bottom:0.75rem; min-height:1rem;"></div>
+
+        <div class="form-group">
+            <label>Add Mirror URL(s)</label>
+            <input type="text" id="mirrorInput" placeholder="http://backup.online  (or paste newline-separated list)">
+            <button onclick="addMirror()" class="btn-secondary" style="margin-top:0.5rem; width:100%; border-radius:9999px; padding:0.5rem;">Add</button>
+        </div>
+
+        <div id="mirrorOptions" style="display:none;">
+            <div class="form-group" style="margin-top:0.25rem;">
+                <label>Options (applied on Refresh Source)</label>
+                <button type="button" class="xtream-toggle" id="mopt_vod" onclick="this.classList.toggle('active')">
+                    <span class="toggle-box"></span> Include VOD (Movies)
+                </button>
+                <button type="button" class="xtream-toggle" id="mopt_series" onclick="this.classList.toggle('active')">
+                    <span class="toggle-box"></span> Include Series (TV Shows)
+                </button>
+                <button type="button" class="xtream-toggle" id="mopt_proxy" onclick="this.classList.toggle('active')">
+                    <span class="toggle-box"></span> Proxy Stream URLs (Bypass Blocks)
+                </button>
+            </div>
+        </div>
+
+        <div class="button-group">
+            <button onclick="saveMirrors()" class="btn">Save</button>
+            <button onclick="mirrorRefreshSource()" class="btn-secondary">Refresh Source</button>
+            <button onclick="$.modal.close()" class="btn-secondary">Close</button>
+        </div>
     </div>
 
-    <!-- Scripts -->
+    <!-- Processing Overlay -->
+    <div id="processingStatus" style="display: none;">
+        <div id="spinner"></div>
+        <div id="processingCard">
+            <span id="statusMessage">Starting…</span>
+            <div id="processingSteps"></div>
+            <div id="processingFooter">
+                <span id="processingElapsed">0s</span>
+                <span id="processingHint">Safe to minimize — processing continues in background</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast container -->
+    <div id="toastContainer" style="position:fixed; bottom:1.5rem; right:1.5rem; z-index:10000; display:flex; flex-direction:column; gap:0.5rem; pointer-events:none; align-items:flex-end;"></div>
+
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-modal/0.9.1/jquery.modal.min.js"></script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
-</body>
+    <script>
+        function toggleXtream(btn) {
+            btn.classList.toggle('active');
+            const cb = document.getElementById(btn.dataset.target);
+            if (cb) cb.checked = btn.classList.contains('active');
+        }
+        // ── Mirror / Alt Server Manager ──
+        let _mUserId, _mName, _mList = [], _mBase = '', _mSource = '';
 
+        function _setToggle(id, val) {
+            const el = document.getElementById(id);
+            if (el) el.classList.toggle('active', !!val);
+        }
+
+        function openMirrorModal(userId, playlistName) {
+            _mUserId = userId;
+            _mName   = playlistName;
+            document.getElementById('mirrorModalTitle').textContent = playlistName;
+            document.getElementById('mirrorStreamBase').value = 'Detecting…';
+            document.getElementById('mirrorList').innerHTML = '';
+            fetch(`/playlist/${userId}/${encodeURIComponent(playlistName)}/mirrors`)
+                .then(r => r.json())
+                .then(data => {
+                    _mList   = data.mirrors || [];
+                    _mBase   = data.stream_base || '';
+                    _mSource = data.source || '';
+                    document.getElementById('mirrorStreamBase').value = _mBase || '(not detected — open editor first)';
+                    _renderMirrorList();
+                    _renderActiveSelect(data.active_mirror);
+                    const optsEl = document.getElementById('mirrorOptions');
+                    if (_mSource === 'Xtream API') {
+                        optsEl.style.display = '';
+                        _setToggle('mopt_vod',    data.include_vod);
+                        _setToggle('mopt_series', data.include_series);
+                        _setToggle('mopt_proxy',  data.include_proxy);
+                    } else {
+                        optsEl.style.display = 'none';
+                    }
+                })
+                .catch(() => { document.getElementById('mirrorStreamBase').value = 'Error loading'; });
+            $('#mirrorModal').modal('show');
+        }
+
+        function _renderMirrorList() {
+            document.getElementById('mirrorList').innerHTML = _mList.length
+                ? _mList.map((m, i) => `
+                    <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.35rem;">
+                        <span style="flex:1;font-size:0.78rem;color:#a8e8ff;word-break:break-all;">${m}</span>
+                        <button onclick="_removeMirror(${i})" title="Remove"
+                            style="background:none;border:none;color:rgba(255,255,255,0.35);cursor:pointer;font-size:1.1rem;line-height:1;padding:0.1rem 0.3rem;">×</button>
+                    </div>`).join('')
+                : '<div style="font-size:0.72rem;color:rgba(255,255,255,0.25);margin-bottom:0.5rem;">No mirrors added yet.</div>';
+        }
+
+        function _renderActiveSelect(current) {
+            const sel = document.getElementById('mirrorActiveSelect');
+            sel.innerHTML = '<option value="">Original (default)</option>' +
+                _mList.map(m => `<option value="${m}"${m === current ? ' selected' : ''}>${m}</option>`).join('');
+        }
+
+        function addMirror() {
+            const raw = document.getElementById('mirrorInput').value.trim();
+            raw.split(/[\n,]+/).map(s => s.trim()).filter(Boolean).forEach(url => {
+                if (!_mList.includes(url)) _mList.push(url);
+            });
+            document.getElementById('mirrorInput').value = '';
+            _renderMirrorList();
+            _renderActiveSelect(document.getElementById('mirrorActiveSelect').value);
+        }
+
+        function _removeMirror(i) {
+            const wasActive = document.getElementById('mirrorActiveSelect').value;
+            _mList.splice(i, 1);
+            _renderMirrorList();
+            _renderActiveSelect(wasActive);
+        }
+
+        function saveMirrors() {
+            const active = document.getElementById('mirrorActiveSelect').value || null;
+            const payload = { mirrors: _mList, active_mirror: active };
+            if (_mSource === 'Xtream API') {
+                payload.include_vod    = document.getElementById('mopt_vod').classList.contains('active');
+                payload.include_series = document.getElementById('mopt_series').classList.contains('active');
+                payload.include_proxy  = document.getElementById('mopt_proxy').classList.contains('active');
+            }
+            fetch(`/playlist/${_mUserId}/${encodeURIComponent(_mName)}/mirrors`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            }).then(r => r.json()).then(d => alert(d.message || d.error));
+        }
+
+        function mirrorRefreshSource() {
+            const source = _mBase ? '' : '';
+            if (!confirm('Re-download source playlist using the active mirror?\n\nYour edited playlist is not affected.')) return;
+            fetch(`/playlist/${_mUserId}/${encodeURIComponent(_mName)}/refresh-source`, { method: 'POST' })
+                .then(r => r.json()).then(d => alert(d.message || d.error));
+        }
+    </script>
+</body>
 </html>

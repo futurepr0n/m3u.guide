@@ -24,13 +24,13 @@ python3 -c "from app import app; from models import db; app.app_context().push()
 - **app.py** (~1100 lines): Flask app + all routes + `PlaylistManager` class
 - **m3u_epg_editor.py**: Module imported by `app.py` as `editor` — provides `setup_custom_dns()`, `perform_get_with_backups()`, `get_random_user_agent()` for robust downloading
 - **m3u-epg-editor-py3.py**: Legacy CLI script, still invoked as a subprocess by `/optimize-playlist`
-- **m3u_analyzer_beefy.py**: Analyzer run during auto-analysis (`analyze_playlist_internal`)
-- **m3u_analyzer_beefy-new.py**: Enhanced analyzer (VLC buttons, copy URL) — used by the manual `/analyze-playlist` endpoint
+- **m3u_analyzer_beefy-new.py**: Active analyzer — used by both `analyze_playlist_internal` (auto) and `/analyze-playlist` (manual). Dark Cinema Vault theme, VLC buttons, copy-URL, series management.
+- **m3u_analyzer_beefy.py**: Legacy script — retained for reference only, not called by any route.
 - **models.py**: SQLAlchemy models — `User → Playlist` (1:many), no Group/Channel DB models; editor uses M3U files directly
 - **auth.py**: Blueprint for `/login`, `/register`, `/logout`
 
-### Two Analyzer Scripts
-The split is intentional: `m3u_analyzer_beefy.py` runs automatically during playlist creation (fast, basic). `m3u_analyzer_beefy-new.py` runs when the user manually clicks Analyze (adds VLC launchers, copy-URL buttons, series management). Both output to `analysis/` dir and write `command.json` with statistics + channel IDs.
+### Analyzer Script
+`m3u_analyzer_beefy-new.py` is the sole active analyzer. It runs for both auto-analysis (during playlist creation) and manual re-analysis (Analyze button). Outputs to `analysis/` dir, writes `command.json` with statistics + channel IDs. Generates the dark Cinema Vault themed HTML reports.
 
 ### Download Pipeline
 `download_file()` in `app.py` delegates to `editor.perform_get_with_backups()` with a random user-agent and fallback DNS (Cloudflare/Google/Quad9 via `editor.setup_custom_dns()`, called at import time). This is the fix for M3U download failures against restrictive IPTV providers.

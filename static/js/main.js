@@ -8,81 +8,94 @@ let currentUserId = null;
 function loadPlaylists() {
     $.get('/get-playlists')
         .done(function (response) {
-            const tbody = $('#playlistTableBody');
-            tbody.empty();
-
+            const grid = $('#playlistGrid');
+            grid.empty();
             currentUserId = response.user_id;
 
+            if (!response.playlists || response.playlists.length === 0) {
+                grid.html(`
+                    <div style="grid-column:1/-1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:5rem 0; color:#bbc9cf; text-align:center;">
+                        <span class="material-symbols-outlined" style="font-size:3rem; color:rgba(255,255,255,0.15); margin-bottom:1rem;">playlist_add</span>
+                        <p style="font-size:0.875rem;">No playlists yet — add one to get started.</p>
+                    </div>
+                `);
+                return;
+            }
+
             response.playlists.forEach(function (playlist) {
-                const row = $('<tr></tr>');
+                const hasAnalysis = playlist.has_analysis;
+                const encodedCmd  = playlist.m3u_editor_command ? encodeURIComponent(playlist.m3u_editor_command) : '';
 
-                // Add data cells
-                row.append(`<td>${playlist.name}</td>`);
-                row.append(`<td>${playlist.source}</td>`);
-                row.append(`<td>${playlist.total_channels || 0}</td>`);
-                row.append(`<td>${playlist.total_epg_matches || 0}</td>`);
-                row.append(`<td>${playlist.total_movies || 0}</td>`);
-                row.append(`<td>${playlist.total_series || 0}</td>`);
-                row.append(`<td>${playlist.total_unmatched || 0}</td>`);
+                const adminBtn = window.location.search.includes('admin=true') ? `
+                    <button class="btn original-analysis-btn action-chip"
+                            onclick="viewOriginalAnalysis('${playlist.name}')"
+                            ${hasAnalysis ? '' : 'disabled'}
+                            title="Classic analysis view">Classic</button>
+                ` : '';
 
-                // Add command cell with a collapsible pre tag
-                const commandCell = $('<td data-column="command" class="hidden-command"></td>');
-                if (playlist.m3u_editor_command) {
-                    const pre = $('<pre style="max-width: 300px; overflow: auto; white-space: pre-wrap;"></pre>')
-                        .text(playlist.m3u_editor_command);
-                    commandCell.append(pre);
-                } else {
-                    commandCell.text('No command available');
-                }
-                row.append(commandCell);
+                const card = `
+                    <div class="ambient-glow" style="
+                        background: #1c1b1b; border-radius: 0.75rem; padding: 1.5rem;
+                        transition: all 0.3s; display: flex; flex-direction: column;">
 
-                const actions = $('<td></td>');
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:1.25rem;">
+                            <button onclick="openMirrorModal(${currentUserId}, '${escapeHtml(playlist.name)}')"
+                                    title="Manage alt servers / mirrors"
+                                    style="background:#353534; padding:0.6rem; border-radius:0.625rem; border:none; cursor:pointer; display:flex; align-items:center; transition:background 0.15s;"
+                                    onmouseover="this.style.background='#2a2a2a'" onmouseout="this.style.background='#353534'">
+                                <span class="material-symbols-outlined" style="color:#00d4ff; font-size:1.25rem; font-variation-settings:'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;">playlist_play</span>
+                            </button>
+                            <span style="font-size:0.65rem; font-weight:700; padding:0.2rem 0.6rem; border-radius:9999px; background:#201f1f; color:#a8e8ff; text-transform:uppercase; letter-spacing:0.06em; font-family:'Inter',sans-serif;">
+                                ${escapeHtml(playlist.source)}
+                            </span>
+                        </div>
 
-                // Add action buttons
-                actions.append(`<button class="btn edit-btn" onclick="editPlaylist('${playlist.name}')">Edit</button> `);
-                actions.append(`<button class="btn delete-btn" onclick="deletePlaylist('${playlist.name}')">Delete</button> `);
-                actions.append(`<button class="btn process-btn" onclick="processPlaylist('${playlist.name}')">Process</button> `);
-                actions.append(`<button class="btn analyze-btn" onclick="analyzePlaylist('${playlist.name}')">Analyze</button> `);
+                        <h3 style="font-family:'Manrope',sans-serif; font-weight:800; font-size:1.1rem; color:#e5e2e1; letter-spacing:-0.02em; margin-bottom:0.25rem;">${escapeHtml(playlist.name)}</h3>
 
-                // Enhanced Content Analysis button (primary)
-                actions.append(`
-                    <button class="btn content-analysis-btn" 
-                            onclick="viewEnhancedAnalysis('${playlist.name}')"
-                            ${playlist.has_analysis ? '' : 'disabled'}
-                            title="Advanced content analysis with search and performance optimizations">
-                        📊 Content Analysis
-                    </button>
-                `);
+                        <div style="display:flex; gap:1.25rem; margin:1rem 0 1.25rem; flex-wrap:wrap;">
+                            <div style="text-align:center;">
+                                <div style="font-family:'Manrope',sans-serif; font-weight:800; font-size:1.2rem; color:#00d4ff;">${playlist.total_channels || 0}</div>
+                                <div style="font-size:0.6rem; color:rgba(255,255,255,0.35); text-transform:uppercase; letter-spacing:0.07em;">Channels</div>
+                            </div>
+                            <div style="text-align:center;">
+                                <div style="font-family:'Manrope',sans-serif; font-weight:800; font-size:1.2rem; color:rgba(255,255,255,0.6);">${playlist.total_movies || 0}</div>
+                                <div style="font-size:0.6rem; color:rgba(255,255,255,0.35); text-transform:uppercase; letter-spacing:0.07em;">Movies</div>
+                            </div>
+                            <div style="text-align:center;">
+                                <div style="font-family:'Manrope',sans-serif; font-weight:800; font-size:1.2rem; color:rgba(255,255,255,0.6);">${playlist.total_series || 0}</div>
+                                <div style="font-size:0.6rem; color:rgba(255,255,255,0.35); text-transform:uppercase; letter-spacing:0.07em;">Series</div>
+                            </div>
+                            <div style="text-align:center;">
+                                <div style="font-family:'Manrope',sans-serif; font-weight:800; font-size:1.2rem; color:rgba(255,255,255,0.6);">${playlist.total_epg_matches || 0}</div>
+                                <div style="font-size:0.6rem; color:rgba(255,255,255,0.35); text-transform:uppercase; letter-spacing:0.07em;">EPG</div>
+                            </div>
+                        </div>
 
-                // Original Content Analysis button (hidden by default, admin access)
-                if (window.location.search.includes('admin=true')) {
-                    actions.append(`
-                        <button class="btn original-analysis-btn" 
-                                onclick="viewOriginalAnalysis('${playlist.name}')"
-                                ${playlist.has_analysis ? '' : 'disabled'}
-                                title="Classic content analysis view"
-                                style="background: #95a5a6; color: white; font-size: 0.85em;">
-                            📄 Classic View
-                        </button>
-                    `);
-                }
-
-                // Optimize button with data attributes
-                actions.append(`
-                    <button class="btn optimize-btn" 
-                            onclick="optimizePlaylist('${playlist.name}')"
-                            ${playlist.has_analysis ? '' : 'disabled'}
-                            data-command="${playlist.m3u_editor_command ? encodeURIComponent(playlist.m3u_editor_command) : ''}">
-                        Optimize
-                    </button>
-                `);
-
-                row.append(actions);
-                tbody.append(row);
+                        <div style="display:flex; flex-wrap:wrap; gap:0.4rem; padding-top:1rem; margin-top:auto;">
+                            <button class="btn edit-btn action-chip"          onclick="editPlaylist('${playlist.name}')">Edit</button>
+                            <button class="btn analyze-btn action-chip"       onclick="analyzePlaylist('${playlist.name}')">Analyze</button>
+                            <button class="btn content-analysis-btn action-chip action-chip-primary"
+                                    onclick="viewEnhancedAnalysis('${playlist.name}')"
+                                    ${hasAnalysis ? '' : 'disabled'}>Content</button>
+                            ${adminBtn}
+                            <button class="btn optimize-btn action-chip action-chip-accent"
+                                    onclick="optimizePlaylist('${playlist.name}')"
+                                    ${hasAnalysis ? '' : 'disabled'}
+                                    data-command="${encodedCmd}">Optimize</button>
+                            <button class="btn delete-btn action-chip action-chip-danger" onclick="deletePlaylist('${playlist.name}')">Delete</button>
+                        </div>
+                    </div>
+                `;
+                grid.append(card);
             });
         })
         .fail(function (error) {
             console.error('Error loading playlists:', error);
+            $('#playlistGrid').html(`
+                <div style="grid-column:1/-1; text-align:center; padding:4rem 0; color:rgba(255,255,255,0.3); font-size:0.875rem;">
+                    Failed to load playlists. Please refresh.
+                </div>
+            `);
         });
 }
 
@@ -157,29 +170,88 @@ function submitM3uFile() {
     submitPlaylist(formData);
 }
 
-function submitPlaylist(formData) {  // Correct function declaration
+let _jobPollTimer = null;
+let _jobStartTime = null;
+let _activeJobId  = null;
+
+function _showToast(msg, type) {
+    const toast = document.createElement('div');
+    const bg = type === 'success' ? 'rgba(0,160,90,0.95)' : 'rgba(180,35,35,0.95)';
+    toast.style.cssText = `background:${bg}; color:#fff; padding:0.75rem 1.1rem; border-radius:0.5rem;
+        font-size:0.82rem; font-family:Inter,sans-serif; max-width:340px; pointer-events:auto;
+        cursor:pointer; box-shadow:0 4px 24px rgba(0,0,0,0.5); line-height:1.4;`;
+    toast.textContent = msg;
+    toast.onclick = () => toast.remove();
+    document.getElementById('toastContainer').appendChild(toast);
+    setTimeout(() => { if (toast.parentNode) toast.remove(); }, 7000);
+}
+
+function _updateProcessingUI(data) {
+    document.getElementById('statusMessage').textContent = data.step || '…';
+    const steps = (data.steps || []).slice(-6);
+    document.getElementById('processingSteps').innerHTML =
+        steps.map(s => `<div>${s}</div>`).join('');
+    if (_jobStartTime) {
+        const elapsed = Math.floor((Date.now() - _jobStartTime) / 1000);
+        const m = Math.floor(elapsed / 60), s = elapsed % 60;
+        document.getElementById('processingElapsed').textContent =
+            m > 0 ? `${m}m ${s}s` : `${s}s`;
+    }
+}
+
+function _pollJob(jobId) {
+    _jobPollTimer = setTimeout(function () {
+        $.get('/job-status/' + jobId)
+            .done(function (data) {
+                _updateProcessingUI(data);
+                if (data.status === 'running') {
+                    _pollJob(jobId);
+                } else if (data.status === 'complete') {
+                    _activeJobId = null;
+                    $('#processingStatus').hide();
+                    loadPlaylists();
+                    _showToast(
+                        data.analyzed
+                            ? 'Playlist ready! Content analysis complete.'
+                            : 'Playlist added. Run Analyze to build content index.',
+                        'success'
+                    );
+                } else if (data.status === 'error') {
+                    _activeJobId = null;
+                    $('#processingStatus').hide();
+                    _showToast('Processing failed: ' + (data.error || 'Unknown error'), 'error');
+                }
+            })
+            .fail(function () { _pollJob(jobId); }); // retry on network blip
+    }, 1500);
+}
+
+window.addEventListener('beforeunload', function (e) {
+    if (_activeJobId) {
+        e.preventDefault();
+        e.returnValue = 'Playlist is still processing. It will continue in the background, but you may miss the completion notification.';
+    }
+});
+
+function submitPlaylist(formData) {
     $.modal.close();
+    _jobStartTime = Date.now();
+    _updateProcessingUI({ step: 'Connecting…', steps: [] });
     $('#processingStatus').show();
 
-    $.ajax({
-        url: '/process-playlist',
-        type: 'POST',
-        data: formData,
-        processData: false,
-        contentType: false
-    })
+    $.ajax({ url: '/process-playlist', type: 'POST', data: formData, processData: false, contentType: false })
         .done(function (response) {
-            $('#processingStatus').hide();
-            loadPlaylists();
-            if (response.analyzed) {
-                alert('Playlist processed and analyzed successfully');
+            if (response.job_id) {
+                _activeJobId = response.job_id;
+                _pollJob(response.job_id);
             } else {
-                alert('Playlist processed successfully but analysis failed. You can try analyzing again manually.');
+                $('#processingStatus').hide();
+                _showToast('Unexpected server response', 'error');
             }
         })
         .fail(function (error) {
             $('#processingStatus').hide();
-            alert('Error processing playlist: ' + error.responseJSON?.error || 'Unknown error');
+            _showToast('Failed to start: ' + (error.responseJSON?.error || 'Unknown error'), 'error');
         });
 }
 
