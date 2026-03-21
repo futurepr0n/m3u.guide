@@ -1,15 +1,179 @@
-# M3U.GUIDE
+# m3u.guide
 
-## What is it?
-m3u.guide is an iptv/m3u manager type application which is meant for taking your files and analyzing them, optimizing an epg for only entries found in your m3u, toggling on and off which channels or content you want visible and creating a custom playlist from those selections. This is not affiliated with, but leverages the (m3u-epg-editor)[https://github.com/bebo-dot-dev/m3u-epg-editor] that I found on github. The aim was to create a self hosted replacement for m3u4us because at one point that site went down and then made you have to also use dropbox, the process was a bit brutal and also noone can vet or use or help their project, and this is aimed to be open so anyone can help or make suggestions.
+Self-hosted IPTV playlist manager. Analyze M3U files against EPG data, filter and search content, toggle channel visibility, and generate optimized playlists. Live demo: https://m3u.guide
 
-## Installation
-To install, you can download the repo and stand up with docker. A simple way is using docker dev environments.
-Also feel free to test it out at https://m3u.guide.
+Open-source replacement for m3u4us. Built on [m3u-epg-editor](https://github.com/bebo-dot-dev/m3u-epg-editor) by bebo-dot-dev.
 
-#### Security
-Our security is built on the following:
-- using password hashing (in models.py using generate_password_hash and check_password_hash)
-- secure session management with Flask-Session
-- CSRF protection through Flask's built-in mechanisms
-- `secure_filename` for file operations
+---
+
+## Features
+
+- Multi-user with register/login auth
+- 4 playlist source types: API Line, Xtream API, M3U URL, M3U file upload
+- EPG matching analysis — HTML reports for Live TV, Movies, Series, No EPG, Other
+- Interactive playlist editor — toggle group/channel visibility, rename, save, download
+- In-browser video player — TS/live streams via mpegts.js, HLS via hls.js, MP4/MKV native
+- VLC deep-link launchers for Desktop, iOS (VLC Remote), Android
+- Stream proxy — CORS bypass, User-Agent spoofing for restricted streams
+- Playlist optimization — filtered M3U + trimmed EPG output (only matched channels)
+- Collapsible groups with real-time search + jump-to-group navigation in analysis views
+- Lazy-loaded poster images — handles 33K+ movie entries without browser lockup
+- Cinema Vault dark UI (Manrope + Inter, Material Symbols, Font Awesome, Tailwind CSS)
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Backend | Python 3.9+, Flask 2.2.0 |
+| Database | SQLite via Flask-SQLAlchemy 3.0.2 |
+| Sessions | Flask-Session 0.5.0 (filesystem-backed) |
+| Auth | Werkzeug 2.2.0 — PBKDF2 password hashing |
+| M3U/EPG Parsing | lxml 5.3.0, regex, xml.etree.ElementTree |
+| HTTP Robustness | requests 2.28.1, dnspython, fake-useragent |
+| Date Handling | python-dateutil 2.9, tzlocal 4.3.1 |
+| Video Playback | mpegts.js 1.8.0 (TS/live), hls.js (HLS), HTML5 video (MP4/MKV) |
+| Frontend | HTML5, vanilla JS, Tailwind CSS (CDN), Material Symbols, Font Awesome 6 |
+| Typography | Manrope + Inter (Google Fonts) |
+| Deployment | Docker (python:3.9-slim base), docker-compose |
+| Config | python-dotenv 0.19.0 |
+| Logging | Python RotatingFileHandler → `logs/app.log` |
+
+---
+
+## Architecture
+
+| File | Purpose |
+|---|---|
+| `app.py` | Flask app, all routes, `PlaylistManager` class (~1100 lines) |
+| `models.py` | SQLAlchemy models: `User → Playlist` (1:many) |
+| `auth.py` | Blueprint: `/login`, `/register`, `/logout` |
+| `m3u_epg_editor.py` | Imported as `editor` — DNS fallback, download pipeline, random User-Agent |
+| `m3u_analyzer_beefy.py` | Auto-analyzer — runs on playlist creation (fast, basic output) |
+| `m3u_analyzer_beefy-new.py` | Manual analyzer — VLC launchers, copy-URL buttons, series management |
+| `m3u-epg-editor-py3.py` | Legacy CLI optimizer — invoked as subprocess by `/optimize-playlist` |
+| `templates/` | 6 Jinja2 templates |
+| `static/js/` | `main.js`, `playlist-editor.js`, `content-collapse.js` |
+
+### File Storage Layout
+
+```
+static/playlists/{user_id}/{playlist_name}/
+├── tv.m3u                              # Source playlist
+├── epg.xml                             # Source EPG
+├── analysis/
+│   ├── content_analysis_matched.html
+│   ├── content_analysis_movies.html
+│   ├── content_analysis_series.html
+│   ├── content_analysis_unmatched.html
+│   ├── content_analysis_unmatched_no_tvg.html
+│   └── command.json                    # Stats + channel IDs for optimizer
+└── optimized/
+    ├── cleaned.m3u8
+    └── cleaned.xml
+```
+
+---
+
+## Deployment
+
+### Docker (Recommended)
+
+```bash
+git clone https://github.com/futurepr0n/m3u.guide
+cd m3u.guide
+docker-compose up --build
+```
+
+App available at `http://localhost:4444`
+
+Notes:
+- Container runs as root for file permission compatibility
+- Data persisted via volume mount to `./static/playlists/` and `./instance/`
+
+### Bare Metal — startup_app.sh
+
+```bash
+git clone https://github.com/futurepr0n/m3u.guide
+cd m3u.guide
+./startup_app.sh
+```
+
+App available at `http://localhost:4444`
+
+`startup_app.sh` handles:
+- Creates Python venv if not present
+- Installs `requirements.txt`
+- Auto-generates `FLASK_SECRET_KEY` → `.env` on first run
+- Initializes SQLite database (`app.db`)
+- Starts Flask server
+
+### Manual Setup
+
+```bash
+git clone https://github.com/futurepr0n/m3u.guide
+cd m3u.guide
+
+python3 -m venv venv
+source venv/bin/activate        # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+
+# Create .env with a secret key
+echo "FLASK_SECRET_KEY=$(python3 -c 'import secrets; print(secrets.token_hex(32))')" > .env
+
+# Initialize database
+python3 -c "from app import app; from models import db; app.app_context().push(); db.create_all()"
+
+python3 app.py
+```
+
+---
+
+## Environment Variables
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `FLASK_SECRET_KEY` | Yes | auto-generated by startup_app.sh | Flask session signing key |
+
+`startup_app.sh` auto-generates this key on first run and saves it to `.env`. For manual setup, create `.env` with the key set before running.
+
+---
+
+## First Run
+
+1. Navigate to `http://localhost:4444`
+2. Register an account
+3. Click **Add Playlist** → choose source type (M3U URL, file upload, API Line, or Xtream API)
+4. After processing, click **Analyze** to generate EPG match reports
+5. Use **Content** to browse matched channels, movies, and series
+6. Use **Edit** to toggle group/channel visibility and download a custom playlist
+7. Use **Optimize** to generate a filtered M3U + trimmed EPG output pair
+
+---
+
+## Security
+
+- PBKDF2 password hashing via `Werkzeug.generate_password_hash` / `check_password_hash`
+- Filesystem session management (Flask-Session, 1-hour lifetime)
+- `secure_filename()` applied to all playlist file paths before disk access
+- User isolation: file-serving routes verify `session['user_id'] == url_user_id`
+- Random User-Agent via fake-useragent on all M3U/EPG download requests
+- Fallback DNS resolver chain: Cloudflare 1.1.1.1 → Google 8.8.8.8 → Quad9 9.9.9.9 (bypasses restrictive IPTV providers)
+- 300 MB upload size limit enforced
+
+---
+
+## Port Reference
+
+| Context | Port |
+|---|---|
+| Default (local / Docker) | `4444` |
+| Live demo | https://m3u.guide |
+
+---
+
+## Credits
+
+- [m3u-epg-editor](https://github.com/bebo-dot-dev/m3u-epg-editor) by bebo-dot-dev — the CLI optimizer powering `/optimize-playlist`
+- Built as an open-source, self-hostable alternative to m3u4us

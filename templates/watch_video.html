@@ -38,6 +38,12 @@
             position: fixed; top: 0; left: 0; right: 0; z-index: 50;
             height: 88px; display: flex; align-items: center; justify-content: space-between;
             padding: 0 2rem;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+        .cinema-header.hidden {
+            opacity: 0;
+            transform: translateY(-100%);
+            pointer-events: none;
         }
         .back-btn {
             display: flex; align-items: center; gap: 0.5rem;
@@ -74,11 +80,56 @@
         }
         .glass-panel {
             background: rgba(42,42,42,0.7); backdrop-filter: blur(28px);
-            border-radius: 2rem; padding: 1.2rem 1.75rem;
+            border-radius: 2rem;
             border: 1px solid rgba(255,255,255,0.05);
             box-shadow: 0 24px 60px rgba(0,0,0,0.8), 0 0 40px rgba(0,212,255,0.04);
-            display: flex; flex-direction: column; gap: 0.65rem;
+            overflow: hidden;
         }
+
+        /* ── Collapse handle ── */
+        .glass-panel-handle {
+            display: flex; flex-direction: column; align-items: center; gap: 0.25rem;
+            padding: 0.6rem 1.75rem 0;
+            cursor: pointer; user-select: none;
+        }
+        .glass-panel-handle:hover .handle-notch { background: rgba(255,255,255,0.28); }
+        .handle-notch {
+            width: 2.5rem; height: 4px; border-radius: 9999px;
+            background: rgba(255,255,255,0.14);
+            transition: background 0.15s;
+        }
+        .glass-panel-handle .handle-chevron {
+            font-size: 16px; color: rgba(255,255,255,0.35);
+            transition: transform 0.35s cubic-bezier(0.4,0,0.2,1);
+            line-height: 1;
+        }
+        .glass-panel.collapsed .handle-chevron { transform: rotate(180deg); }
+
+        /* ── Collapsible body ── */
+        .glass-panel-body {
+            display: flex; flex-direction: column; gap: 0.65rem;
+            padding: 0.65rem 1.75rem 1.2rem;
+            max-height: 400px;
+            overflow: hidden;
+            transition: max-height 0.35s cubic-bezier(0.4,0,0.2,1),
+                        padding 0.35s cubic-bezier(0.4,0,0.2,1),
+                        opacity 0.25s ease;
+            opacity: 1;
+        }
+        .glass-panel.collapsed .glass-panel-body {
+            max-height: 0;
+            padding-top: 0;
+            padding-bottom: 0;
+            opacity: 0;
+        }
+        /* Collapsed pill shows current mode label */
+        .collapsed-status {
+            display: none; align-items: center; justify-content: center;
+            padding: 0.1rem 0 0.75rem;
+            font-size: 0.65rem; font-weight: 600; letter-spacing: 0.08em;
+            text-transform: uppercase; color: rgba(255,255,255,0.3);
+        }
+        .glass-panel.collapsed .collapsed-status { display: flex; }
 
         /* ── Control rows ── */
         .ctrl-row {
@@ -144,64 +195,77 @@
     <div id="status-bar"></div>
 
     <div class="cinema-controls">
-        <div class="glass-panel">
+        <div class="glass-panel" id="glassPanel">
 
-            <!-- Play mode row (live only) -->
-            <div id="live-controls" style="display:none;">
+            <!-- Drag handle / collapse toggle -->
+            <div class="glass-panel-handle" onclick="toggleControls()">
+                <div class="handle-notch"></div>
+                <span class="material-symbols-outlined handle-chevron">expand_less</span>
+            </div>
+
+            <!-- Collapsed pill label -->
+            <div class="collapsed-status" id="collapsedStatus">Tap to show controls</div>
+
+            <!-- All controls wrapped in collapsible body -->
+            <div class="glass-panel-body">
+
+                <!-- Play mode row (live only) -->
+                <div id="live-controls" style="display:none;">
+                    <div class="ctrl-row">
+                        <span class="ctrl-label">Play via</span>
+                        <button id="btn-hls-proxy"  class="player-btn btn-hls-proxy"  onclick="play('hls','proxy')">
+                            <span class="material-symbols-outlined">play_circle</span> HLS + Proxy
+                        </button>
+                        <button id="btn-ts-proxy"   class="player-btn btn-ts-proxy"   onclick="play('ts','proxy')">
+                            <span class="material-symbols-outlined">play_circle</span> TS + Proxy
+                        </button>
+                        <button id="btn-hls-direct" class="player-btn btn-hls-direct" onclick="play('hls','direct')">
+                            <span class="material-symbols-outlined">wifi</span> HLS Direct
+                        </button>
+                        <button id="btn-ts-direct"  class="player-btn btn-ts-direct"  onclick="play('ts','direct')">
+                            <span class="material-symbols-outlined">wifi</span> TS Direct
+                        </button>
+                    </div>
+                    <div class="ctrl-divider" style="margin-top:0.65rem;"></div>
+                </div>
+
+                <!-- VLC row -->
                 <div class="ctrl-row">
-                    <span class="ctrl-label">Play via</span>
-                    <button id="btn-hls-proxy"  class="player-btn btn-hls-proxy"  onclick="play('hls','proxy')">
-                        <span class="material-symbols-outlined">play_circle</span> HLS + Proxy
+                    <span class="ctrl-label">VLC</span>
+                    <a id="vlc-proxy-btn"  href="#" class="player-btn btn-vlc">
+                        <span class="material-symbols-outlined">videocam</span> Proxy
+                    </a>
+                    <a id="vlc-direct-btn" href="#" class="player-btn btn-vlc" style="opacity:0.75;">
+                        <span class="material-symbols-outlined">videocam</span> Direct
+                    </a>
+                    <a id="vlc-ios-btn"    href="#" class="player-btn btn-vlc" style="opacity:0.75;">
+                        <span class="material-symbols-outlined">phone_iphone</span> iOS
+                    </a>
+                </div>
+
+                <div class="ctrl-divider"></div>
+
+                <!-- Copy row -->
+                <div class="ctrl-row">
+                    <span class="ctrl-label">Copy</span>
+                    <button onclick="copyProxyUrl('ts')"  class="player-btn btn-copy">
+                        <span class="material-symbols-outlined">content_copy</span> Proxy TS
                     </button>
-                    <button id="btn-ts-proxy"   class="player-btn btn-ts-proxy"   onclick="play('ts','proxy')">
-                        <span class="material-symbols-outlined">play_circle</span> TS + Proxy
+                    <button onclick="copyProxyUrl('hls')" class="player-btn btn-copy">
+                        <span class="material-symbols-outlined">content_copy</span> Proxy HLS
                     </button>
-                    <button id="btn-hls-direct" class="player-btn btn-hls-direct" onclick="play('hls','direct')">
-                        <span class="material-symbols-outlined">wifi</span> HLS Direct
+                    <button onclick="copyDirect('ts')"    class="player-btn btn-copy-stream">
+                        <span class="material-symbols-outlined">content_copy</span> Direct TS
                     </button>
-                    <button id="btn-ts-direct"  class="player-btn btn-ts-direct"  onclick="play('ts','direct')">
-                        <span class="material-symbols-outlined">wifi</span> TS Direct
+                    <button onclick="copyDirect('hls')"   class="player-btn btn-copy-stream">
+                        <span class="material-symbols-outlined">content_copy</span> Direct HLS
+                    </button>
+                    <button onclick="reloadPlayer()"      class="player-btn btn-reload">
+                        <span class="material-symbols-outlined">refresh</span> Reload
                     </button>
                 </div>
-                <div class="ctrl-divider" style="margin-top:0.65rem;"></div>
+
             </div>
-
-            <!-- VLC row -->
-            <div class="ctrl-row">
-                <span class="ctrl-label">VLC</span>
-                <a id="vlc-proxy-btn"  href="#" class="player-btn btn-vlc">
-                    <span class="material-symbols-outlined">videocam</span> Proxy
-                </a>
-                <a id="vlc-direct-btn" href="#" class="player-btn btn-vlc" style="opacity:0.75;">
-                    <span class="material-symbols-outlined">videocam</span> Direct
-                </a>
-                <a id="vlc-ios-btn"    href="#" class="player-btn btn-vlc" style="opacity:0.75;">
-                    <span class="material-symbols-outlined">phone_iphone</span> iOS
-                </a>
-            </div>
-
-            <div class="ctrl-divider"></div>
-
-            <!-- Copy row -->
-            <div class="ctrl-row">
-                <span class="ctrl-label">Copy</span>
-                <button onclick="copyProxyUrl('ts')"  class="player-btn btn-copy">
-                    <span class="material-symbols-outlined">content_copy</span> Proxy TS
-                </button>
-                <button onclick="copyProxyUrl('hls')" class="player-btn btn-copy">
-                    <span class="material-symbols-outlined">content_copy</span> Proxy HLS
-                </button>
-                <button onclick="copyDirect('ts')"    class="player-btn btn-copy-stream">
-                    <span class="material-symbols-outlined">content_copy</span> Direct TS
-                </button>
-                <button onclick="copyDirect('hls')"   class="player-btn btn-copy-stream">
-                    <span class="material-symbols-outlined">content_copy</span> Direct HLS
-                </button>
-                <button onclick="reloadPlayer()"      class="player-btn btn-reload">
-                    <span class="material-symbols-outlined">refresh</span> Reload
-                </button>
-            </div>
-
         </div>
     </div>
 
@@ -237,6 +301,7 @@
         function setStatus(msg, type) {
             statusBar.textContent = msg;
             statusBar.className   = 's-' + type;
+            if (type === 'playing') scheduleAutoCollapse();
         }
 
         function destroyPlayers() {
@@ -339,6 +404,43 @@
                 document.body.removeChild(ta);
             }
         }
+
+        // ── Controls collapse ──
+        const glassPanel = document.getElementById('glassPanel');
+        const cinemaHeader = document.querySelector('.cinema-header');
+
+        let autoCollapseTimer = null;
+        let userExpanded = false; // true = user manually opened, suppress auto-collapse
+
+        function setUICollapsed(collapsed) {
+            glassPanel.classList.toggle('collapsed', collapsed);
+            cinemaHeader.classList.toggle('hidden', collapsed);
+        }
+
+        function toggleControls() {
+            const willCollapse = !glassPanel.classList.contains('collapsed');
+            setUICollapsed(willCollapse);
+            userExpanded = !willCollapse;
+            if (userExpanded) clearTimeout(autoCollapseTimer); // don't auto-close after manual expand
+        }
+
+        // Auto-collapse after 4s — only if user hasn't manually expanded
+        function scheduleAutoCollapse() {
+            if (userExpanded) return;
+            clearTimeout(autoCollapseTimer);
+            autoCollapseTimer = setTimeout(() => {
+                if (!glassPanel.classList.contains('collapsed')) {
+                    setUICollapsed(true);
+                }
+            }, 4000);
+        }
+
+        // Restore controls when returning from Picture-in-Picture
+        document.getElementById('videoEl').addEventListener('leavepictureinpicture', () => {
+            userExpanded = false;
+            setUICollapsed(false);
+            scheduleAutoCollapse();
+        });
 
         initialLoad();
     </script>
