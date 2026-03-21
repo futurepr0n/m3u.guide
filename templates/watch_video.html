@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -14,6 +15,7 @@
             flex-direction: column;
             align-items: center;
         }
+
         .video-container {
             max-width: 1200px;
             width: 100%;
@@ -21,13 +23,15 @@
             background: white;
             padding: 20px;
             border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
+
         video {
             width: 100%;
             max-width: 1160px;
             height: auto;
         }
+
         .back-btn {
             background-color: #6c757d;
             color: white;
@@ -38,14 +42,17 @@
             margin-bottom: 20px;
             display: inline-block;
         }
+
         .back-btn:hover {
             background-color: #5a6268;
             color: white;
             text-decoration: none;
         }
+
         h1 {
             margin-bottom: 20px;
         }
+
         .player-btn {
             background-color: #007bff;
             color: white;
@@ -59,30 +66,37 @@
             cursor: pointer;
             font-size: 14px;
         }
+
         .player-btn:hover {
             background-color: #0056b3;
             text-decoration: none;
             color: white;
         }
+
         .vlc-btn {
             background-color: #ff6b35;
         }
+
         .vlc-btn:hover {
             background-color: #e55a2e;
         }
+
         .copy-btn {
             background-color: #28a745;
         }
+
         .copy-btn:hover {
             background-color: #218838;
         }
     </style>
 </head>
+
 <body>
     <a href="javascript:history.back()" class="back-btn">← Back</a>
     <h1>Video Player</h1>
     <div class="video-container">
-        <div class="player-actions" style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 5px;">
+        <div class="player-actions"
+            style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 5px;">
             <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
                 <span style="font-weight: bold; margin-right: 10px;">External Players:</span>
                 <a href="vlc://{{video_url}}" class="player-btn vlc-btn">
@@ -93,37 +107,63 @@
                 </button>
             </div>
         </div>
-        
+
         <video controls>
-            <source src="{{video_url}}">
+            <source src="/stream_proxy?url={{ video_url | urlencode }}">
             Your browser does not support the video tag.
         </video>
         <script>
-            // Get the video URL from the video element source
+            // Store the original URL for copy functionality
+            const originalVideoUrl = "{{ video_url }}";
+
             function copyStreamUrl() {
-                const video = document.querySelector('video source');
-                const url = video ? video.src : '';
-                
-                if (!url) {
+                if (!originalVideoUrl) {
                     alert('No video URL found');
                     return;
                 }
-                
-                navigator.clipboard.writeText(url).then(function() {
-                    alert('Stream URL copied to clipboard!');
-                }).catch(function(err) {
-                    console.error('Could not copy text: ', err);
-                    // Fallback for older browsers
-                    const textArea = document.createElement('textarea');
-                    textArea.value = url;
-                    document.body.appendChild(textArea);
-                    textArea.select();
-                    document.execCommand('copy');
-                    document.body.removeChild(textArea);
-                    alert('Stream URL copied to clipboard!');
-                });
+
+                // Try modern Clipboard API first
+                if (navigator.clipboard && window.isSecureContext) {
+                    navigator.clipboard.writeText(originalVideoUrl).then(function () {
+                        alert('Stream URL copied to clipboard!');
+                    }).catch(function (err) {
+                        console.error('Clipboard API failed: ', err);
+                        fallbackCopy(originalVideoUrl);
+                    });
+                } else {
+                    fallbackCopy(originalVideoUrl);
+                }
+            }
+
+            function fallbackCopy(text) {
+                const textArea = document.createElement('textarea');
+                textArea.value = text;
+
+                // Ensure textarea is not visible but part of DOM
+                textArea.style.position = 'fixed';
+                textArea.style.left = '-9999px';
+                textArea.style.top = '0';
+
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+
+                try {
+                    const successful = document.execCommand('copy');
+                    if (successful) {
+                        alert('Stream URL copied to clipboard!');
+                    } else {
+                        alert('Unable to copy URL. Please copy it manually from the address bar.');
+                    }
+                } catch (err) {
+                    console.error('Fallback copy failed', err);
+                    alert('Unable to copy URL');
+                }
+
+                document.body.removeChild(textArea);
             }
         </script>
     </div>
 </body>
+
 </html>

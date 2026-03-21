@@ -14,18 +14,32 @@ def analyze_url_pattern(url):
     Returns 'movie', 'series', or None if pattern doesn't match.
     """
     import re
+    import urllib.parse
     
-    # Create a more flexible pattern that matches both http and https URLs
-    # with any domain and port number
-    url_pattern = re.compile(r'https?://[^/]+/(\w+)/')
+    # Decoded URL in case it's proxied
+    test_url = url.lower()
+    if 'stream_proxy' in test_url:
+        try:
+            # Try to extract the real URL from the proxy query
+            parsed = urllib.parse.urlparse(url)
+            params = urllib.parse.parse_qs(parsed.query)
+            if 'url' in params:
+                test_url = params['url'][0].lower()
+        except:
+            pass
+
+    # Look for common Xtream path segments
+    if '/movie/' in test_url or 'action=get_vod_streams' in test_url:
+        return 'movie'
+    if '/series/' in test_url or 'action=get_series' in test_url:
+        return 'series'
     
-    match = url_pattern.search(url)
-    if match:
-        content_type = match.group(1).lower()
-        if content_type == 'movie':
-            return 'movie'
-        elif content_type == 'series':
-            return 'series'
+    # Generic regex for after the domain or anywhere in path
+    if re.search(r'/(movie|movies)/', test_url):
+        return 'movie'
+    if re.search(r'/(series|tvshows|episodes)/', test_url):
+        return 'series'
+        
     return None
 
 def split_no_tvg_content(no_tvg_id_groups):
@@ -50,25 +64,67 @@ def split_no_tvg_content(no_tvg_id_groups):
 
 
 def parse_series_info(title):
-    """Parse series name, season, and episode from title"""
-    # Pattern for "S01 E01" or similar formats
-    season_ep_pattern = re.compile(r'(.*?)S(\d+)\s*E(\d+)', re.IGNORECASE)
-    match = season_ep_pattern.match(title)
+    """Parse series name, season, and episode from title with multiple patterns"""
+    # Clean common prefixes to improve grouping
+    # Matches: "US:", "AMZ -", "4K-AMZ -", "NF -", "GR -", etc.
+    # We strip these so "AMZ - Show" and "4K-AMZ - Show" group together
+    # and "US: Show" and "UK: Show" group together (which is usually desired for unified listing)
+    prefixes = r'^(?:(?:US|UK|CA|AMZ|NF|HULU|DSNY|GR|EN|DE|IT|FR|ES|PT|PL|TR|4K|FHD|HD|SD|RAW|HEVC|VOD|VIP)\s*[-:|]\s*)+'
+    clean_title = re.sub(prefixes, '', title, flags=re.IGNORECASE).strip()
     
+    # 1. Standard "S01 E01" / "S01E01" / "Season 01 Episode 01"
+    # Matches: "Show S01E01", "Show Season 1 Episode 1"
+    match = re.search(r'(.*?)(?:S|Season)\s*(\d+)\s*(?:E|Ep|Episode|x)\s*(\d+)', clean_title, re.IGNORECASE)
     if match:
-        series_name = match.group(1).strip()
-        season = int(match.group(2))
-        episode = int(match.group(3))
         return {
-            'series_name': series_name,
-            'season': season,
-            'episode': episode,
+            'series_name': match.group(1).strip(" -:"),
+            'season': int(match.group(2)),
+            'episode': int(match.group(3)),
             'is_series': True
         }
+        
+    # 2. "1x01" format
+    match = re.search(r'(.*?)(\d+)x(\d+)', clean_title, re.IGNORECASE)
+    if match:
+        return {
+            'series_name': match.group(1).strip(" -:"),
+            'season': int(match.group(2)),
+            'episode': int(match.group(3)),
+            'is_series': True
+        }
+
+    # 3. "Episode 01" / "Ep 01" / "E01" / "Series 1" / "Part 1" format
+    # Matches: "Title Episode 1", "Title Ep 1", "Title E1", "Title - E1", "Title Part 1", "Title Vol 1", "Title Series 1"
+    match = re.search(r'(.*?)(?:\s+-\s+)?(?:Episode|Ep|E|Part|Pt|Vol|Volume|Series)\s*(\d+)', clean_title, re.IGNORECASE)
+    if match:
+        # Check if the captured number is a year (e.g. 2024), if so, ignore
+        num_str = match.group(2)
+        if len(num_str) == 4 and (num_str.startswith('19') or num_str.startswith('20')):
+            pass
+        else:
+            return {
+                'series_name': match.group(1).strip(" -:"),
+                'season': 1,
+                'episode': int(num_str),
+                'is_series': True
+            }
+
+    # 4. Fallback for just a number at the end, e.g. "Show Name 01"
+    # Match usually 1-3 digits. 4 digits is risky (could be year).
+    match = re.search(r'(.*?)\s+(\d{1,3})$', clean_title)
+    if match:
+        return {
+            'series_name': match.group(1).strip(" -:"),
+            'season': 1,
+            'episode': int(match.group(2)),
+            'is_series': True
+        }
+
+    # Default fallback
     return {
-        'series_name': title,
-        'season': None,
-        'episode': None,
+        'series_name': clean_title or title,
+        'season': 1,
+        'episode': 1,
         'is_series': False
     }
 
@@ -152,19 +208,20 @@ def generate_series_page_content(channels, group_name):
     
     for channel in channels:
         parsed = parse_series_info(channel['name'])
-        if parsed['is_series']:
-            if parsed['series_name'] not in series_data:
-                series_data[parsed['series_name']] = {'seasons': {}}
-            
-            season_num = str(parsed['season'])  # Convert season to string
-            if season_num not in series_data[parsed['series_name']]['seasons']:
-                series_data[parsed['series_name']]['seasons'][season_num] = []
-            
-            series_data[parsed['series_name']]['seasons'][season_num].append({
-                'episode': parsed['episode'],
-                'name': channel['name'],
-                'url': channel.get('url', '')
-            })
+        # Include all items in a series group, even if pattern matching failed
+        s_name = parsed['series_name']
+        if s_name not in series_data:
+            series_data[s_name] = {'seasons': {}}
+        
+        season_num = str(parsed['season'])
+        if season_num not in series_data[s_name]['seasons']:
+            series_data[s_name]['seasons'][season_num] = []
+        
+        series_data[s_name]['seasons'][season_num].append({
+            'episode': parsed['episode'],
+            'name': channel['name'],
+            'url': channel.get('url', '')
+        })
     
     # CSS for the three-column layout
     css = """
@@ -408,10 +465,13 @@ def generate_series_page_content(channels, group_name):
                                     <td>E${{ep.episode.toString().padStart(2, '0')}}</td>
                                     <td>${{ep.name}}</td>
                                     <td class="actions-cell">
-                                        ${{ep.url && ep.url.toLowerCase().endsWith('.mkv') ? `
-                                            <a href="${{ep.url}}" class="action-btn download-btn" download="${{ep.name}}.mkv">Download</a>
-                                            <a href="/watch_video?url=${{encodeURIComponent(ep.url)}}" class="action-btn watch-btn">Watch</a>
-                                        ` : ''}}
+                                        <div class="stream-actions">
+                                            ${{ ep.url ? `
+                                                ${{ ep.url.toLowerCase().endsWith('.mkv') ? `<a href="${{ep.url}}" class="action-btn download-btn" download="${{ep.name}}.mkv">Download</a>` : '' }}
+                                                <a href="/watch_video?url=${{encodeURIComponent(ep.url)}}" class="action-btn watch-btn">Watch</a>
+                                                <button onclick="copyStreamUrl(this, '${{encodeURIComponent(ep.url)}}')" class="action-btn copy-btn">Copy URL</button>
+                                            ` : '' }}
+                                        </div>
                                     </td>
                                 </tr>
                             `).join('')}}
@@ -618,24 +678,23 @@ def check_epg_matches(xml_file, groups):
 
 def organize_no_tvg_content(channels):
     """Split content into Movies and TV Series and organize accordingly"""
-    # Pattern for detecting TV series format
-    series_pattern = re.compile(r'.*?S(\d+)\s*E(\d+)', re.IGNORECASE)
-    
     tv_series = defaultdict(lambda: defaultdict(list))
     movies = defaultdict(list)
     
     for channel in channels:
-        match = series_pattern.match(channel['name'])
-        if match:
-            # Extract base series name (everything before SXX EXX)
-            series_name = channel['name'][:match.start(1)-1].strip()
-            season = int(match.group(1))
-            episode = int(match.group(2))
-            
-            tv_series[channel['group']][series_name].append({
+        # Utilize the robust parse_series_info function
+        parsed = parse_series_info(channel['name'])
+        
+        # We rely on is_series logic, but if analyze_url_pattern (from caller) already 
+        # identified the GROUP as a series group, we should probably prefer treating it as series 
+        # if appropriate. However, for "organize_no_tvg_content" which splits generalized lists,
+        # we stick to the parser's classification.
+        
+        if parsed['is_series']:
+            tv_series[channel['group']][parsed['series_name']].append({
                 'name': channel['name'],
-                'season': season,
-                'episode': episode,
+                'season': parsed['season'],
+                'episode': parsed['episode'],
                 'url': channel['url']
             })
         else:

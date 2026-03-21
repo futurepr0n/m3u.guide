@@ -14,18 +14,32 @@ def analyze_url_pattern(url):
     Returns 'movie', 'series', or None if pattern doesn't match.
     """
     import re
-    
-    # Create a more flexible pattern that matches both http and https URLs
-    # with any domain and port number
-    url_pattern = re.compile(r'https?://[^/]+/(\w+)/')
-    
-    match = url_pattern.search(url)
-    if match:
-        content_type = match.group(1).lower()
-        if content_type == 'movie':
-            return 'movie'
-        elif content_type == 'series':
-            return 'series'
+    import urllib.parse
+
+    # Decoded URL in case it's proxied
+    test_url = url.lower()
+    if 'stream_proxy' in test_url:
+        try:
+            # Try to extract the real URL from the proxy query
+            parsed = urllib.parse.urlparse(url)
+            params = urllib.parse.parse_qs(parsed.query)
+            if 'url' in params:
+                test_url = params['url'][0].lower()
+        except:
+            pass
+
+    # Look for common Xtream path segments
+    if '/movie/' in test_url or 'action=get_vod_streams' in test_url:
+        return 'movie'
+    if '/series/' in test_url or 'action=get_series' in test_url:
+        return 'series'
+
+    # Generic regex for after the domain or anywhere in path
+    if re.search(r'/(movie|movies)/', test_url):
+        return 'movie'
+    if re.search(r'/(series|tvshows|episodes)/', test_url):
+        return 'series'
+
     return None
 
 def split_no_tvg_content(no_tvg_id_groups):
@@ -50,23 +64,136 @@ def split_no_tvg_content(no_tvg_id_groups):
 
 
 def parse_series_info(title):
-    """Parse series name, season, and episode from title"""
-    # Pattern for "S01 E01" or similar formats
-    season_ep_pattern = re.compile(r'(.*?)S(\d+)\s*E(\d+)', re.IGNORECASE)
-    match = season_ep_pattern.match(title)
-    
+    """Parse series name, season, and episode from title with multiple patterns"""
+    # Clean common prefixes to improve grouping
+    # Matches: "US:", "AMZ -", "4K-AMZ -", "NF -", "GR -", etc.
+    # We strip these so "AMZ - Show" and "4K-AMZ - Show" group together
+    # and "US: Show" and "UK: Show" group together (which is usually desired for unified listing)
+    prefixes = r'^(?:(?:US|UK|CA|AMZ|NF|HULU|DSNY|GR|EN|DE|IT|FR|ES|PT|PL|TR|4K|FHD|HD|SD|RAW|HEVC|VOD|VIP)\s*[-:|]\s*)+'
+    clean_title = re.sub(prefixes, '', title, flags=re.IGNORECASE).strip()
+
+    # 1. Standard "S01 E01" / "S01E01" / "Season 01 Episode 01"
+    # Matches: "Show S01E01", "Show Season 1 Episode 1", "Show S01 E01"
+    # Also handles: "Show (Up to S01E01)" patterns
+    # Try the "Up to" pattern first
+    match = re.search(r'(.*?)\s*\(Up to\s+(?:S|Season)\s*(\d+)\s*(?:E|Ep|Episode|x)\s*(\d+)\)', clean_title, re.IGNORECASE)
     if match:
-        series_name = match.group(1).strip()
+        series_name = match.group(1).strip(" -:")
         season = int(match.group(2))
         episode = int(match.group(3))
+        # Check if the captured number is a year (e.g. 2024), if so, ignore
+        if season > 1900 or episode > 1900:
+            pass  # Continue to next pattern
+        else:
+            return {
+                'series_name': series_name,
+                'season': season,
+                'episode': episode,
+                'is_series': True
+            }
+
+    # Try standard pattern without "Up to"
+    match = re.search(r'(.*?)(?:S|Season)\s*(\d+)\s*(?:E|Ep|Episode|x)\s*(\d+)', clean_title, re.IGNORECASE)
+    if match:
+        series_name = match.group(1).strip(" -:")
+        season = int(match.group(2))
+        episode = int(match.group(3))
+        # Check if the captured number is a year (e.g. 2024), if so, ignore
+        if season > 1900 or episode > 1900:
+            pass  # Continue to next pattern
+        else:
+            return {
+                'series_name': series_name,
+                'season': season,
+                'episode': episode,
+                'is_series': True
+            }
+
+    # 2. "1x01" format
+    # Try the "Up to" pattern first
+    match = re.search(r'(.*?)\s*\(Up to\s+(\d+)x(\d+)\)', clean_title, re.IGNORECASE)
+    if match:
+        series_name = match.group(1).strip(" -:")
+        season = int(match.group(2))
+        episode = int(match.group(3))
+        if season > 1900 or episode > 1900:
+            pass  # Continue to next pattern
+        else:
+            return {
+                'series_name': series_name,
+                'season': season,
+                'episode': episode,
+                'is_series': True
+            }
+
+    # Try standard "1x01" pattern
+    match = re.search(r'(.*?)(\d+)x(\d+)', clean_title, re.IGNORECASE)
+    if match:
+        series_name = match.group(1).strip(" -:")
+        season = int(match.group(2))
+        episode = int(match.group(3))
+        if season > 1900 or episode > 1900:
+            pass  # Continue to next pattern
+        else:
+            return {
+                'series_name': series_name,
+                'season': season,
+                'episode': episode,
+                'is_series': True
+            }
+
+    # 3. "Episode 01" / "Ep 01" / "E01" / "Series 1" / "Part 1" format
+    # Matches: "Title Episode 1", "Title Ep 1", "Title E1", "Title - E1", "Title Part 1", "Title Vol 1", "Title Series 1"
+    # Try the "Up to" pattern first
+    match = re.search(r'(.*?)\s*\(Up to\s+(?:Episode|Ep|E|Part|Pt|Vol|Volume|Series)\s*(\d+)\)', clean_title, re.IGNORECASE)
+    if match:
+        potential_series_name = match.group(1).strip(" -:")
+        episode_num = int(match.group(2))
+
+        # Check if the captured number is a year (e.g. 2024), if so, ignore
+        if episode_num > 1900:
+            pass  # Not a series
+        else:
+            # For this pattern, we assume Season 1 if not specified
+            return {
+                'series_name': potential_series_name,
+                'season': 1,
+                'episode': episode_num,
+                'is_series': True
+            }
+
+    # Try standard pattern
+    match = re.search(r'(.*?)(?:Episode|Ep|E|Part|Pt|Vol|Volume|Series)\s*(\d+)', clean_title, re.IGNORECASE)
+    if match:
+        potential_series_name = match.group(1).strip(" -:")
+        episode_num = int(match.group(2))
+
+        # Check if the captured number is a year (e.g. 2024), if so, ignore
+        if episode_num > 1900:
+            pass  # Not a series
+        else:
+            # For this pattern, we assume Season 1 if not specified
+            return {
+                'series_name': potential_series_name,
+                'season': 1,
+                'episode': episode_num,
+                'is_series': True
+            }
+
+    # 4. Fallback: Check for common series indicators anywhere in the title
+    # Look for patterns like "S01", "Season 1", "Series 1", etc.
+    # Also handles "(Up to S01)" patterns
+    if re.search(r'(?:\b|Up to\s+)(?:S\d+|Season \d+|Series \d+)\b', clean_title, re.IGNORECASE):
+        # If we find series indicators but couldn't parse them, treat as series with default values
         return {
-            'series_name': series_name,
-            'season': season,
-            'episode': episode,
+            'series_name': clean_title,
+            'season': 1,
+            'episode': 1,
             'is_series': True
         }
+
     return {
-        'series_name': title,
+        'series_name': clean_title or title,
         'season': None,
         'episode': None,
         'is_series': False
@@ -152,19 +279,34 @@ def generate_series_page_content(channels, group_name):
     
     for channel in channels:
         parsed = parse_series_info(channel['name'])
+        
+        # Determine series info - use parsed if valid, else fallback
         if parsed['is_series']:
-            if parsed['series_name'] not in series_data:
-                series_data[parsed['series_name']] = {'seasons': {}}
+            s_name = parsed['series_name']
+            season_num = str(parsed['season'])
+            ep_num = parsed['episode']
+        else:
+            # Fallback for items that are in a Series group but don't look like "S01E01"
+            # We treat the whole name as the series name, Season 1, Episode 1 (or we could auto-increment if we tracked it)
+            # But really, if it's just "Show Name", it's likely a movie or a single-episode special in a series group.
+            # We'll treat it as Season 1, Episode 1.
+            s_name = channel['name']
+            season_num = "1"
+            ep_num = 1
             
-            season_num = str(parsed['season'])  # Convert season to string
-            if season_num not in series_data[parsed['series_name']]['seasons']:
-                series_data[parsed['series_name']]['seasons'][season_num] = []
-            
-            series_data[parsed['series_name']]['seasons'][season_num].append({
-                'episode': parsed['episode'],
-                'name': channel['name'],
-                'url': channel.get('url', '')
-            })
+        if s_name not in series_data:
+            series_data[s_name] = {'seasons': {}}
+        
+        if season_num not in series_data[s_name]['seasons']:
+            series_data[s_name]['seasons'][season_num] = []
+        
+        # Check if this episode already exists to avoid duplicates (or maybe we want duplicates if different URLs?)
+        # For now, append all.
+        series_data[s_name]['seasons'][season_num].append({
+            'episode': ep_num,
+            'name': channel['name'],
+            'url': channel.get('url', '')
+        })
     
     # CSS for the three-column layout
     css = """
@@ -827,8 +969,9 @@ def generate_no_tvg_id_content(group_name, channels):
     series_data = {}
     for group, series_dict in tv_series.items():
         for series_name, episodes in series_dict.items():
-            # Extract base series name (without season/episode)
-            base_name = re.match(r'(.*?)\s*S\d+\s*E\d+', series_name).group(1).strip()
+            # The series_name should already be clean from organize_series_content
+            # Just use it as-is, but clean any remaining artifacts
+            base_name = series_name.strip()
             
             if base_name not in series_data:
                 series_data[base_name] = {'seasons': {}}
@@ -1649,9 +1792,9 @@ def generate_split_html_reports(groups, no_tvg_id_groups, matched_groups, output
             "Series without TVG-ID",
             ''.join(series_content),
             shared_header,
-            css_styles,
-            scripts  # Added scripts parameter
+            css_styles
         ))
+    print(f"- {series_file}")
         
     # Generate content for unmatched no TVG-ID content
     unmatched_no_tvg_file = os.path.join(output_dir, 'content_analysis_unmatched_no_tvg.html')
