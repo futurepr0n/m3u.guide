@@ -502,7 +502,7 @@ def generate_series_page_content(channels, group_name):
                 data-series="{series_name}" 
                 onclick="selectSeries_{safe_group_id}(decodeURIComponent('{encoded_series_name}'))">
                 {series_name}
-                <span class="total-episodes">{total_episodes} episodes</span>
+                <span class="total-episodes">{total_episodes} Season(s)</span>
             </div>
         """)
 
