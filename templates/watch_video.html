@@ -1,169 +1,267 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Video Player</title>
+    <script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.8.0/dist/mpegts.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 20px;
-            background: #f5f5f5;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
+            margin: 0; padding: 20px;
+            background: #1a1a2e; color: #eee;
+            display: flex; flex-direction: column; align-items: center;
         }
-
         .video-container {
-            max-width: 1200px;
-            width: 100%;
-            margin: 20px auto;
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            max-width: 1200px; width: 100%; margin: 10px auto;
+            background: #16213e; padding: 20px;
+            border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);
         }
-
-        video {
-            width: 100%;
-            max-width: 1160px;
-            height: auto;
+        #videoEl {
+            width: 100%; max-height: 70vh;
+            background: #000; border-radius: 4px; display: block;
         }
-
         .back-btn {
-            background-color: #6c757d;
-            color: white;
-            padding: 8px 16px;
-            border: none;
-            border-radius: 4px;
-            text-decoration: none;
-            margin-bottom: 20px;
-            display: inline-block;
+            background: #6c757d; color: white; padding: 8px 16px;
+            border: none; border-radius: 4px; text-decoration: none;
+            margin-bottom: 15px; display: inline-block; cursor: pointer;
         }
+        .back-btn:hover { background: #5a6268; color: white; text-decoration: none; }
 
-        .back-btn:hover {
-            background-color: #5a6268;
-            color: white;
-            text-decoration: none;
+        .section-label {
+            font-size: 11px; font-weight: bold; text-transform: uppercase;
+            color: #aaa; letter-spacing: 1px; margin-right: 4px; white-space: nowrap;
         }
-
-        h1 {
-            margin-bottom: 20px;
+        .btn-row {
+            display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+            padding: 10px 14px; border-radius: 5px; margin-bottom: 8px;
         }
+        .btn-row.play-row   { background: #0f3460; }
+        .btn-row.ext-row    { background: #1a2a4a; }
+        .btn-row.copy-row   { background: #1a3a2a; }
 
         .player-btn {
-            background-color: #007bff;
-            color: white;
-            padding: 8px 16px;
-            border: none;
-            border-radius: 4px;
-            text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            gap: 5px;
-            cursor: pointer;
-            font-size: 14px;
+            color: white; padding: 6px 12px; border: none; border-radius: 4px;
+            text-decoration: none; display: inline-flex; align-items: center;
+            gap: 5px; cursor: pointer; font-size: 12px; font-family: Arial, sans-serif;
+            transition: filter .15s;
         }
+        .player-btn:hover   { filter: brightness(1.2); color: white; text-decoration: none; }
+        .player-btn.active  { outline: 2px solid #fff; }
 
-        .player-btn:hover {
-            background-color: #0056b3;
-            text-decoration: none;
-            color: white;
-        }
+        .btn-hls-proxy  { background: #6f42c1; }
+        .btn-ts-proxy   { background: #0d6efd; }
+        .btn-hls-direct { background: #8e44ad; opacity:.85; }
+        .btn-ts-direct  { background: #1a6eb5; opacity:.85; }
+        .btn-vlc        { background: #f58220; }
+        .btn-copy       { background: #17a2b8; }
+        .btn-copy-stream{ background: #28a745; }
+        .btn-reload     { background: #495057; }
 
-        .vlc-btn {
-            background-color: #ff6b35;
+        #status-bar {
+            padding: 8px 12px; border-radius: 4px; margin-bottom: 10px;
+            font-size: 13px; display: none;
         }
-
-        .vlc-btn:hover {
-            background-color: #e55a2e;
-        }
-
-        .copy-btn {
-            background-color: #28a745;
-        }
-
-        .copy-btn:hover {
-            background-color: #218838;
-        }
+        .s-loading { background:#0c3547; color:#b8daff; display:block !important; }
+        .s-live    { background:#155724; color:#d4edda; display:block !important; }
+        .s-playing { display:none !important; }
+        .s-error   { background:#721c24; color:#f8d7da; display:block !important; }
     </style>
 </head>
-
 <body>
-    <a href="javascript:history.back()" class="back-btn">← Back</a>
-    <h1>Video Player</h1>
+    <div style="width:100%;max-width:1200px;">
+        <a href="javascript:history.back()" class="back-btn">← Back</a>
+    </div>
+
     <div class="video-container">
-        <div class="player-actions"
-            style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 5px;">
-            <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
-                <span style="font-weight: bold; margin-right: 10px;">External Players:</span>
-                <a href="vlc://{{video_url}}" class="player-btn vlc-btn">
-                    <i class="fa fa-play-circle"></i> Open in VLC
-                </a>
-                <button onclick="copyStreamUrl()" class="player-btn copy-btn">
-                    <i class="fa fa-copy"></i> Copy URL
-                </button>
+        <div id="status-bar"></div>
+
+        <!-- Play mode selector (live TV only) -->
+        <div id="live-controls" style="display:none;">
+            <div class="btn-row play-row">
+                <span class="section-label">▶ Play via:</span>
+                <button id="btn-hls-proxy"  class="player-btn btn-hls-proxy"  onclick="play('hls','proxy')">HLS + Proxy</button>
+                <button id="btn-ts-proxy"   class="player-btn btn-ts-proxy"   onclick="play('ts','proxy')">TS + Proxy</button>
+                <button id="btn-hls-direct" class="player-btn btn-hls-direct" onclick="play('hls','direct')">HLS Direct</button>
+                <button id="btn-ts-direct"  class="player-btn btn-ts-direct"  onclick="play('ts','direct')">TS Direct</button>
             </div>
         </div>
 
-        <video controls>
-            <source src="/stream_proxy?url={{ video_url | urlencode }}">
-            Your browser does not support the video tag.
-        </video>
-        <script>
-            // Store the original URL for copy functionality
-            const originalVideoUrl = "{{ video_url }}";
+        <video id="videoEl" controls autoplay></video>
 
-            function copyStreamUrl() {
-                if (!originalVideoUrl) {
-                    alert('No video URL found');
-                    return;
-                }
-
-                // Try modern Clipboard API first
-                if (navigator.clipboard && window.isSecureContext) {
-                    navigator.clipboard.writeText(originalVideoUrl).then(function () {
-                        alert('Stream URL copied to clipboard!');
-                    }).catch(function (err) {
-                        console.error('Clipboard API failed: ', err);
-                        fallbackCopy(originalVideoUrl);
-                    });
-                } else {
-                    fallbackCopy(originalVideoUrl);
-                }
-            }
-
-            function fallbackCopy(text) {
-                const textArea = document.createElement('textarea');
-                textArea.value = text;
-
-                // Ensure textarea is not visible but part of DOM
-                textArea.style.position = 'fixed';
-                textArea.style.left = '-9999px';
-                textArea.style.top = '0';
-
-                document.body.appendChild(textArea);
-                textArea.focus();
-                textArea.select();
-
-                try {
-                    const successful = document.execCommand('copy');
-                    if (successful) {
-                        alert('Stream URL copied to clipboard!');
-                    } else {
-                        alert('Unable to copy URL. Please copy it manually from the address bar.');
-                    }
-                } catch (err) {
-                    console.error('Fallback copy failed', err);
-                    alert('Unable to copy URL');
-                }
-
-                document.body.removeChild(textArea);
-            }
-        </script>
+        <!-- External / copy row -->
+        <div class="btn-row ext-row" style="margin-top:10px;">
+            <span class="section-label">VLC:</span>
+            <a id="vlc-proxy-btn"  href="#" class="player-btn btn-vlc">🎬 VLC (Proxy)</a>
+            <a id="vlc-direct-btn" href="#" class="player-btn btn-vlc" style="opacity:.8;">🎬 VLC (Direct)</a>
+            <a id="vlc-ios-btn"    href="#" class="player-btn btn-vlc" style="opacity:.8;">📱 VLC iOS</a>
+        </div>
+        <div class="btn-row copy-row">
+            <span class="section-label">Copy:</span>
+            <button onclick="copyProxyUrl('ts')"    class="player-btn btn-copy">📋 Proxy TS URL</button>
+            <button onclick="copyProxyUrl('hls')"   class="player-btn btn-copy">📋 Proxy HLS URL</button>
+            <button onclick="copyDirect('ts')"      class="player-btn btn-copy-stream">📋 Direct TS URL</button>
+            <button onclick="copyDirect('hls')"     class="player-btn btn-copy-stream">📋 Direct HLS URL</button>
+            <button onclick="reloadPlayer()"        class="player-btn btn-reload">↺ Reload</button>
+        </div>
     </div>
-</body>
 
+    <script>
+        const originalVideoUrl = "{{ video_url }}";
+
+        // Derive .ts and .m3u8 variants from whatever URL we got
+        function toTs(u)  { return u.replace(/\.m3u8(\?.*)?$/i, '.ts$1'); }
+        function toHls(u) { return u.replace(/\.ts(\?.*)?$/i,   '.m3u8$1'); }
+
+        const tsUrl  = toTs(originalVideoUrl);
+        const hlsUrl = toHls(originalVideoUrl);
+
+        const proxyBase  = window.location.origin + '/stream_proxy?url=';
+        const tsProxy    = proxyBase + encodeURIComponent(tsUrl);
+        const hlsProxy   = proxyBase + encodeURIComponent(hlsUrl);
+
+        const urlLower = originalVideoUrl.toLowerCase();
+        const isLive   = urlLower.endsWith('.ts') || urlLower.endsWith('.m3u8') || urlLower.includes('/live/');
+
+        // Wire up VLC links
+        document.getElementById('vlc-proxy-btn').href  = 'vlc://' + tsProxy;
+        document.getElementById('vlc-direct-btn').href = 'vlc://' + tsUrl;
+        document.getElementById('vlc-ios-btn').href    = 'vlc-x-callback://x-callback-url/stream?url=' + encodeURIComponent(tsProxy);
+
+        // Show live controls if needed
+        if (isLive) document.getElementById('live-controls').style.display = 'block';
+
+        const video     = document.getElementById('videoEl');
+        const statusBar = document.getElementById('status-bar');
+
+        let mpegtsPlayer = null;
+        let hlsPlayer    = null;
+        let activeMode   = null;
+
+        function setStatus(msg, type) {
+            statusBar.textContent = msg;
+            statusBar.className   = 's-' + type;
+        }
+
+        function destroyPlayers() {
+            if (mpegtsPlayer) { try { mpegtsPlayer.destroy(); } catch(e){} mpegtsPlayer = null; }
+            if (hlsPlayer)    { try { hlsPlayer.destroy();    } catch(e){} hlsPlayer    = null; }
+            video.removeAttribute('src');
+            video.load();
+            // Clear active button highlight
+            document.querySelectorAll('.play-row .player-btn').forEach(b => b.classList.remove('active'));
+        }
+
+        function play(format, via) {
+            destroyPlayers();
+            activeMode = { format, via };
+
+            const btnId = 'btn-' + format + '-' + via;
+            const btn   = document.getElementById(btnId);
+            if (btn) btn.classList.add('active');
+
+            const streamUrl = via === 'proxy'
+                ? (format === 'hls' ? hlsProxy : tsProxy)
+                : (format === 'hls' ? hlsUrl   : tsUrl);
+
+            if (format === 'hls') {
+                loadHls(streamUrl);
+            } else {
+                loadTs(streamUrl);
+            }
+        }
+
+        function loadTs(url) {
+            if (!mpegts.getFeatureList().mseLivePlayback) {
+                setStatus('⚠ MSE not supported in this browser — try HLS or VLC.', 'error');
+                return;
+            }
+            setStatus('📺 Buffering MPEG-TS stream…', 'loading');
+            mpegtsPlayer = mpegts.createPlayer({
+                type: 'mse', isLive: true, url
+            }, {
+                enableWorker: true,
+                liveBufferLatencyChasing:    true,
+                liveBufferLatencyMaxLatency: 10,
+                liveBufferLatencyMinRemain:  2
+            });
+            mpegtsPlayer.attachMediaElement(video);
+            mpegtsPlayer.load();
+            mpegtsPlayer.play();
+            mpegtsPlayer.on(mpegts.Events.STATISTICS_INFO, () => setStatus('', 'playing'));
+            mpegtsPlayer.on(mpegts.Events.ERROR, (et, ed) => {
+                const msg = (ed && ed.msg) ? ed.msg : et;
+                setStatus('⚠ TS error: ' + msg + ' — try HLS or VLC (Proxy).', 'error');
+            });
+        }
+
+        function loadHls(url) {
+            // Native HLS (Safari)
+            if (!Hls.isSupported() && video.canPlayType('application/vnd.apple.mpegurl')) {
+                setStatus('▶ Loading HLS (native)…', 'loading');
+                video.src = url;
+                video.play();
+                video.addEventListener('playing', () => setStatus('', 'playing'), { once: true });
+                return;
+            }
+            if (!Hls.isSupported()) {
+                setStatus('⚠ HLS not supported — try TS or VLC.', 'error');
+                return;
+            }
+            setStatus('▶ Loading HLS stream…', 'loading');
+            hlsPlayer = new Hls({ lowLatencyMode: true });
+            hlsPlayer.attachMedia(video);
+            hlsPlayer.loadSource(url);
+            hlsPlayer.on(Hls.Events.MANIFEST_PARSED, () => {
+                video.play();
+                setStatus('', 'playing');
+            });
+            hlsPlayer.on(Hls.Events.ERROR, (e, data) => {
+                if (data.fatal) setStatus('⚠ HLS error: ' + data.details + ' — try TS or VLC (Proxy).', 'error');
+            });
+        }
+
+        function reloadPlayer() {
+            if (activeMode) play(activeMode.format, activeMode.via);
+            else            initialLoad();
+        }
+
+        function initialLoad() {
+            if (isLive) {
+                // TS + Proxy is the confirmed working mode for live TV
+                play('ts', 'proxy');
+            } else {
+                // VOD — use proxy, native video element
+                setStatus('▶ Loading…', 'loading');
+                video.src = proxyBase + encodeURIComponent(originalVideoUrl);
+                video.play();
+                video.addEventListener('playing', () => setStatus('', 'playing'), { once: true });
+            }
+        }
+
+        function copyProxyUrl(format) {
+            writeToClipboard(format === 'hls' ? hlsProxy : tsProxy,
+                             (format.toUpperCase()) + ' proxy URL copied!');
+        }
+        function copyDirect(format) {
+            writeToClipboard(format === 'hls' ? hlsUrl : tsUrl,
+                             (format.toUpperCase()) + ' direct URL copied!');
+        }
+        function writeToClipboard(text, msg) {
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(text).then(() => alert(msg));
+            } else {
+                const ta = Object.assign(document.createElement('textarea'),
+                    { value: text, style: 'position:fixed;left:-9999px' });
+                document.body.appendChild(ta); ta.focus(); ta.select();
+                try { document.execCommand('copy'); alert(msg); }
+                catch(e) { alert('Copy manually:\n' + text); }
+                document.body.removeChild(ta);
+            }
+        }
+
+        initialLoad();
+    </script>
+</body>
 </html>

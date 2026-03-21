@@ -586,7 +586,8 @@ def stream_proxy():
             'Connection': 'keep-alive'
         }
         
-        response = requests.get(decoded_url, stream=True, timeout=10, headers=headers)
+        # Connection timeout 15s, no read timeout (live streams send chunks indefinitely)
+        response = requests.get(decoded_url, stream=True, timeout=(15, None), headers=headers)
         
         def generate():
             for chunk in response.iter_content(chunk_size=8192):

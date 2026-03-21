@@ -72,6 +72,19 @@ def parse_series_info(title):
     prefixes = r'^(?:(?:US|UK|CA|AMZ|NF|HULU|DSNY|GR|EN|DE|IT|FR|ES|PT|PL|TR|4K|FHD|HD|SD|RAW|HEVC|VOD|VIP)\s*[-:|]\s*)+'
     clean_title = re.sub(prefixes, '', title, flags=re.IGNORECASE).strip()
 
+    # 0. Season-only "Up to" pattern: "(Up to S02 Complete)" / "(Up to Season 2 Complete)"
+    match = re.search(r'(.*?)\s*\(Up to\s+(?:S|Season)\s*(\d+)\s*(?:Complete|Full)\)', clean_title, re.IGNORECASE)
+    if match:
+        series_name = match.group(1).strip(" -:")
+        season = int(match.group(2))
+        if season <= 1900:
+            return {
+                'series_name': series_name,
+                'season': season,
+                'episode': 0,  # 0 = complete season, no specific episode
+                'is_series': True
+            }
+
     # 1. Standard "S01 E01" / "S01E01" / "Season 01 Episode 01"
     # Matches: "Show S01E01", "Show Season 1 Episode 1", "Show S01 E01"
     # Also handles: "Show (Up to S01E01)" patterns
@@ -287,10 +300,9 @@ def generate_series_page_content(channels, group_name):
             ep_num = parsed['episode']
         else:
             # Fallback for items that are in a Series group but don't look like "S01E01"
-            # We treat the whole name as the series name, Season 1, Episode 1 (or we could auto-increment if we tracked it)
-            # But really, if it's just "Show Name", it's likely a movie or a single-episode special in a series group.
-            # We'll treat it as Season 1, Episode 1.
-            s_name = channel['name']
+            # Strip common prefixes so "GR - Show" and "EN - Show" group together properly
+            prefixes_re = r'^(?:(?:US|UK|CA|AMZ|NF|HULU|DSNY|GR|EN|DE|IT|FR|ES|PT|PL|TR|4K|FHD|HD|SD|RAW|HEVC|VOD|VIP)\s*[-:|]\s*)+'
+            s_name = re.sub(prefixes_re, '', channel['name'], flags=re.IGNORECASE).strip() or channel['name']
             season_num = "1"
             ep_num = 1
             
@@ -573,7 +585,7 @@ def generate_series_page_content(channels, group_name):
                         <tbody>
                             ${{episodes.map(ep => `
                                 <tr>
-                                    <td>E${{ep.episode.toString().padStart(2, '0')}}</td>
+                                    <td>${{ep.episode === 0 ? 'Complete' : 'E' + ep.episode.toString().padStart(2, '0')}}</td>
                                     <td>${{ep.name}}</td>
                                     <td class="actions-cell">
                                         ${{ep.url ? `

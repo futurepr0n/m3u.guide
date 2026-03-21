@@ -769,22 +769,55 @@ def get_m3u_from_api(url, headers, args=None):
                     s_url = args.proxy_base + quote(s_url)
                 m3u_lines.append(s_url)
 
-        # Process Series
+        # Process Series — fetch per-episode data via get_series_info
         if results.get("series_categories") and results.get("series_streams"):
             cats = {c['category_id']: c['category_name'] for c in results["series_categories"]}
-            for s in results["series_streams"]:
-                # Series in Xtream API are handled differently, but for M3U we just list the main entry or episodes
-                # Usually M3U from get.php includes episodes as individual entries.
-                # To match get.php behavior, we'd need to fetch info for EACH series, which is too slow here.
-                # Instead, we'll just add the series entry itself as a placeholder or skip if complex.
-                # Actually, xtream2m3u has a better way but let's stick to basics for now to avoid hundreds of requests.
-                m3u_lines.append('#EXTINF:-1 tvg-id="{}" tvg-name="{}" tvg-logo="{}" group-title="{}",{}'.format(
-                    "", s.get('name', ""), s.get('last_modified', ""), cats.get(s.get('category_id'), "Series"), s.get('name', "")
-                ))
-                s_url = "{}/series/{}/{}/{}.mp4".format(base_url, username, password, s.get('series_id'))
-                if args and args.proxy_base:
-                    s_url = args.proxy_base + quote(s_url)
-                m3u_lines.append(s_url)
+            series_list = results["series_streams"]
+
+            def fetch_series_info(series_entry):
+                sid = series_entry.get('series_id')
+                info_url = "{}/player_api.php?username={}&password={}&action=get_series_info&series_id={}".format(
+                    base_url, username, password, sid)
+                _, data = fetch_api_endpoint(info_url, "series_info_{}".format(sid), headers)
+                return series_entry, data
+
+            series_lines = []
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                futures = [executor.submit(fetch_series_info, s) for s in series_list]
+                for future in as_completed(futures):
+                    try:
+                        series_entry, info = future.result()
+                        if not info or 'episodes' not in info:
+                            continue
+                        category = cats.get(series_entry.get('category_id'), "Series")
+                        series_name = series_entry.get('name', '')
+                        cover = series_entry.get('cover', '')
+                        for season_num, season_eps in info['episodes'].items():
+                            for ep in season_eps:
+                                ep_num = ep.get('episode_num', 1)
+                                ep_title = ep.get('title', '')
+                                ep_name = "{} S{}E{} - {}".format(
+                                    series_name,
+                                    str(season_num).zfill(2),
+                                    str(ep_num).zfill(2),
+                                    ep_title
+                                ) if ep_title else "{} S{}E{}".format(
+                                    series_name,
+                                    str(season_num).zfill(2),
+                                    str(ep_num).zfill(2)
+                                )
+                                ep_id = ep.get('id')
+                                ext = ep.get('container_extension', 'mp4')
+                                ep_url = "{}/series/{}/{}/{}.{}".format(
+                                    base_url, username, password, ep_id, ext)
+                                if args and args.proxy_base:
+                                    ep_url = args.proxy_base + quote(ep_url)
+                                series_lines.append('#EXTINF:-1 tvg-id="" tvg-name="{}" tvg-logo="{}" group-title="{}",{}'.format(
+                                    ep_name, cover, category, ep_name))
+                                series_lines.append(ep_url)
+                    except Exception as e:
+                        output_str("Error fetching series info: {}".format(e))
+            m3u_lines.extend(series_lines)
 
         output_str("Successfully constructed M3U via API")
 
