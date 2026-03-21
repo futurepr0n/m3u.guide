@@ -5,6 +5,8 @@ import subprocess
 import tempfile
 import secrets
 import logging
+import threading
+import uuid
 from datetime import datetime, timedelta
 from flask_session import Session
 import shutil
@@ -22,6 +24,21 @@ import m3u_epg_editor as editor
 
 # Setup DNS for the whole app
 editor.setup_custom_dns()
+
+# ── Background job tracking ──────────────────────────────────────────────────
+_jobs: dict = {}
+_jobs_lock = threading.Lock()
+
+def _job_set(job_id: str, step: str, status: str = None, **kw):
+    with _jobs_lock:
+        j = _jobs.get(job_id)
+        if not j:
+            return
+        j['step'] = step
+        j['steps'].append(step)
+        if status:
+            j['status'] = status
+        j.update(kw)
 
 
 # Load environment variables
@@ -182,86 +199,116 @@ def get_playlists():
         } for p in playlists]
     })
 
+def _bg_process_playlist(app_ctx, job_id, user_id, name, source, form_data, files_data, host_url):
+    with app_ctx:
+        def prog(msg):
+            _job_set(job_id, msg)
+        try:
+            playlist_dir = playlist_manager.get_playlist_path(user_id, name)
+            playlist_dir.mkdir(parents=True, exist_ok=True)
+            app.logger.info(f"Created directory: {playlist_dir}")
+            m3u_path = playlist_dir / 'tv.m3u'
+            epg_path = playlist_dir / 'epg.xml'
+            playlist_data = {'name': name, 'source': source, 'details': {}}
+
+            prog('Starting…')
+            if source == 'API Line':
+                prog('Downloading M3U from API Line…')
+                success = process_api_line(form_data, m3u_path, epg_path, playlist_data['details'])
+            elif source == 'M3U Url':
+                prog('Downloading M3U from URL…')
+                success = process_m3u_url(form_data, m3u_path, epg_path, playlist_data['details'])
+            elif source == 'M3U File':
+                prog('Processing uploaded M3U file…')
+                success = process_m3u_file(files_data, m3u_path, epg_path, playlist_data['details'])
+            elif source == 'Xtream API':
+                success = process_xtream_api(form_data, m3u_path, epg_path, playlist_data['details'],
+                                              host_url=host_url, progress_cb=prog)
+            else:
+                _job_set(job_id, f'Unknown source: {source}', 'error', error=f'Invalid source type: {source}')
+                return
+
+            if not success:
+                _job_set(job_id, 'Processing failed — check credentials / server URL', 'error',
+                         error='Failed to fetch playlist from provider')
+                return
+
+            prog('Saving to library…')
+            playlist_manager.add_playlist(user_id, playlist_data)
+
+            prog('Running content analysis…')
+            try:
+                analyze_playlist_internal(user_id, name)
+                _job_set(job_id, 'Complete!', 'complete', analyzed=True)
+            except Exception as ae:
+                app.logger.error(f"Analysis error: {ae}")
+                _job_set(job_id, 'Added (analysis skipped)', 'complete', analyzed=False)
+
+        except Exception as e:
+            app.logger.error(f"Background processing error: {e}")
+            _job_set(job_id, f'Error: {str(e)}', 'error', error=str(e))
+
+
 @app.route('/process-playlist', methods=['POST'])
 def process_playlist():
     if 'user_id' not in session:
         return jsonify({'error': 'User not logged in'}), 403
 
-    try:
-        user_id = session['user_id']
-        name = request.form['name']
-        source = request.form['source']
+    user_id  = session['user_id']
+    name     = request.form.get('name', '').strip()
+    source   = request.form.get('source', '').strip()
+    if not name or not source:
+        return jsonify({'error': 'Name and source are required'}), 400
 
-        # Create playlist directory in static folder
-        playlist_dir = playlist_manager.get_playlist_path(user_id, name)
-        playlist_dir.mkdir(parents=True, exist_ok=True)
-        app.logger.info(f"Created directory: {playlist_dir}")
+    # Capture everything from request context before handing off to thread
+    form_data  = request.form.to_dict()
+    host_url   = request.host_url
+    files_data = {}
+    for key in request.files:
+        f = request.files[key]
+        files_data[key] = {'filename': secure_filename(f.filename), 'content': f.read()}
 
-        # Paths for playlist files
-        m3u_path = playlist_dir / 'tv.m3u'
-        epg_path = playlist_dir / 'epg.xml'
+    # Purge stale jobs (> 30 min)
+    cutoff = datetime.utcnow() - timedelta(minutes=30)
+    with _jobs_lock:
+        for k in [k for k, v in _jobs.items() if v['created'] < cutoff]:
+            del _jobs[k]
 
-        playlist_data = {
-            'name': name,
-            'source': source,
-            'details': {}
+    job_id = uuid.uuid4().hex[:10]
+    with _jobs_lock:
+        _jobs[job_id] = {
+            'status':   'running',
+            'step':     'Queued…',
+            'steps':    [],
+            'created':  datetime.utcnow(),
+            'analyzed': None,
+            'error':    None,
         }
 
-        # Handle different source types
-        if source == 'API Line':
-            success = process_api_line(
-                request.form,
-                m3u_path,
-                epg_path,
-                playlist_data['details']
-            )
-        elif source == 'M3U Url':
-            success = process_m3u_url(
-                request.form,
-                m3u_path,
-                epg_path,
-                playlist_data['details']
-            )
-        elif source == 'M3U File':
-            success = process_m3u_file(
-                request.files,
-                m3u_path,
-                epg_path,
-                playlist_data['details']
-            )
-        elif source == 'Xtream API':
-            success = process_xtream_api(
-                request.form,
-                m3u_path,
-                epg_path,
-                playlist_data['details']
-            )
-        else:
-            return jsonify({'error': 'Invalid source type'}), 400
+    t = threading.Thread(
+        target=_bg_process_playlist,
+        args=(app.app_context(), job_id, user_id, name, source, form_data, files_data, host_url),
+        daemon=True,
+    )
+    t.start()
+    return jsonify({'job_id': job_id})
 
-        if not success:
-            return jsonify({'error': 'Failed to process playlist'}), 500
 
-        # Add playlist to database
-        playlist_manager.add_playlist(user_id, playlist_data)
-
-        # Automatically run analysis
-        try:
-            analyze_playlist_internal(user_id, name)
-            return jsonify({
-                'message': 'Playlist processed and analyzed successfully',
-                'analyzed': True
-            })
-        except Exception as analyze_error:
-            app.logger.error(f"Error during automatic analysis: {str(analyze_error)}")
-            return jsonify({
-                'message': 'Playlist processed successfully but analysis failed',
-                'analyzed': False
-            })
-
-    except Exception as e:
-        app.logger.error(f"Error processing playlist: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+@app.route('/job-status/<job_id>')
+def job_status(job_id):
+    if 'user_id' not in session:
+        return jsonify({'error': 'Unauthorized'}), 403
+    with _jobs_lock:
+        job = dict(_jobs.get(job_id) or {})
+    if not job:
+        return jsonify({'error': 'Job not found'}), 404
+    return jsonify({
+        'status':   job['status'],
+        'step':     job['step'],
+        'steps':    job['steps'][-10:],
+        'analyzed': job.get('analyzed'),
+        'error':    job.get('error'),
+    })
 
 # Create a new internal function for analysis
 def analyze_playlist_internal(user_id, playlist_name):
@@ -276,7 +323,7 @@ def analyze_playlist_internal(user_id, playlist_name):
     analysis_dir = playlist_dir / 'analysis'
     analysis_dir.mkdir(exist_ok=True)
 
-    analyzer_script = BASE_DIR / 'm3u_analyzer_beefy.py'
+    analyzer_script = BASE_DIR / 'm3u_analyzer_beefy-new.py'
 
     if not analyzer_script.exists():
         raise FileNotFoundError('Analyzer script not found')
@@ -350,11 +397,15 @@ def process_api_line(form_data, m3u_path, epg_path, details):
         app.logger.error(f"API Line processing error: {str(e)}")
         return False
 
-def process_xtream_api(form_data, m3u_path, epg_path, details):
+def process_xtream_api(form_data, m3u_path, epg_path, details, host_url=None, progress_cb=None):
+    def _prog(msg):
+        if progress_cb:
+            progress_cb(msg)
+
     try:
-        server = form_data['server']
-        username = form_data['username']
-        password = form_data['password']
+        server = form_data.get('server') or form_data['server']
+        username = form_data.get('username') or form_data['username']
+        password = form_data.get('password') or form_data['password']
         include_vod = form_data.get('include_vod') == 'true'
         include_series = form_data.get('include_series') == 'true'
         include_proxy = form_data.get('include_proxy') == 'true'
@@ -370,34 +421,35 @@ def process_xtream_api(form_data, m3u_path, epg_path, details):
                 self.include_proxy = include_proxy
                 self.proxy_base = proxy_base
 
-        # Calculate proxy base URL
-        proxy_base = request.host_url.rstrip('/') + '/stream_proxy?url='
+        base = (host_url or request.host_url).rstrip('/')
+        proxy_base = base + '/stream_proxy?url='
         mock_args = MockArgs(m3u_url, include_vod, include_series, include_proxy, proxy_base if include_proxy else None)
 
         headers = {
             'User-Agent': editor.get_random_user_agent(),
             'Connection': 'close'
         }
-        
-        m3u_response = editor.get_m3u_from_api(m3u_url, headers, mock_args)
-        
+
+        _prog(f'Connecting to {server}…')
+        m3u_response = editor.get_m3u_from_api(m3u_url, headers, mock_args, progress_cb=_prog)
+
         if not m3u_response or m3u_response.status_code != 200:
             raise ValueError(f"Failed to fetch M3U via Xtream API (Status: {m3u_response.status_code if m3u_response else 'N/A'})")
 
-        # Save M3U
+        _prog('Saving playlist file…')
         with open(m3u_path, 'wb') as f:
             f.write(m3u_response.content)
 
-        # Download EPG
+        _prog('Downloading EPG guide…')
         download_file(epg_url, epg_path)
 
-        # Update details
         details.update({
             'server': server,
             'username': username,
             'password': password,
             'include_vod': include_vod,
             'include_series': include_series,
+            'include_proxy': include_proxy,
             'm3u_path': str(m3u_path),
             'epg_path': str(epg_path)
         })
@@ -431,18 +483,22 @@ def process_m3u_url(form_data, m3u_path, epg_path, details):
 
 def process_m3u_file(files, m3u_path, epg_path, details):
     try:
-        if 'm3u_file' not in files or 'epg_file' not in files:
-            raise ValueError('Both M3U and EPG files must be provided')
-        
-        # Save files
-        files['m3u_file'].save(m3u_path)
-        files['epg_file'].save(epg_path)
+        if 'm3u_file' not in files:
+            raise ValueError('M3U file must be provided')
 
-        # Update details
-        details.update({
-            'm3u_path': str(m3u_path),
-            'epg_path': str(epg_path)
-        })
+        def _write(key, path):
+            entry = files[key]
+            if isinstance(entry, dict):
+                with open(path, 'wb') as f:
+                    f.write(entry['content'])
+            else:
+                entry.save(path)
+
+        _write('m3u_file', m3u_path)
+        if 'epg_file' in files:
+            _write('epg_file', epg_path)
+
+        details.update({'m3u_path': str(m3u_path), 'epg_path': str(epg_path)})
         return True
 
     except Exception as e:
@@ -913,16 +969,21 @@ def edit_playlist(user_id, playlist_name):
 
         playlist_dir = playlist_manager.get_playlist_path(user_id, playlist_name)
         m3u_path = playlist_dir / 'tv.m3u'
+        edited_m3u_path = playlist_dir / 'tv_edited.m3u'
 
         if not m3u_path.exists():
             return jsonify({'error': 'M3U file not found'}), 404
 
-        # Parse M3U file to extract groups and channels
+        # Create edited copy from source on first open (source is never modified)
+        if not edited_m3u_path.exists():
+            shutil.copy2(m3u_path, edited_m3u_path)
+
+        # Parse the edited working copy (not the protected source)
         groups = defaultdict(list)
         current_channel = None
         total_channels = 0
 
-        with open(m3u_path, 'r', encoding='utf-8') as f:
+        with open(edited_m3u_path, 'r', encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
                 if line.startswith('#EXTINF:'):
@@ -947,13 +1008,12 @@ def edit_playlist(user_id, playlist_name):
                     total_channels += 1
                     current_channel = None
 
-        # Convert to list of groups with channels
+        # Convert to list of group metadata only — channels loaded on demand
         group_list = [
             {
                 'name': group_name,
-                'channels': channels,
                 'channel_count': len(channels),
-                'visible': True  # Default visibility state
+                'visible': True
             }
             for group_name, channels in sorted(groups.items())
         ]
@@ -974,6 +1034,50 @@ def edit_playlist(user_id, playlist_name):
         app.logger.error(f"Error loading playlist editor: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/playlist/<int:user_id>/<path:playlist_name>/group/<int:group_idx>/channels')
+def get_group_channels(user_id, playlist_name, group_idx):
+    if 'user_id' not in session or session['user_id'] != user_id:
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    try:
+        playlist_dir = playlist_manager.get_playlist_path(user_id, playlist_name)
+        edited_m3u_path = playlist_dir / 'tv_edited.m3u'
+        if not edited_m3u_path.exists():
+            return jsonify({'error': 'Edited M3U not found — open the editor first'}), 404
+
+        groups = defaultdict(list)
+        current_channel = None
+        with open(edited_m3u_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith('#EXTINF:'):
+                    group_match = re.search(r'group-title="([^"]+)"', line)
+                    name_match = re.search(r'",(.+)$', line)
+                    logo_match = re.search(r'tvg-logo="([^"]+)"', line)
+                    if group_match and name_match:
+                        current_channel = {
+                            'name': name_match.group(1).strip(),
+                            'group': group_match.group(1),
+                            'logo': logo_match.group(1) if logo_match else '',
+                            'extinf': line,
+                            'visible': True
+                        }
+                elif line and not line.startswith('#') and current_channel:
+                    current_channel['url'] = line
+                    groups[current_channel['group']].append(current_channel)
+                    current_channel = None
+
+        sorted_names = sorted(groups.keys())
+        if group_idx >= len(sorted_names):
+            return jsonify({'error': 'Group index out of range'}), 404
+
+        return jsonify({'channels': groups[sorted_names[group_idx]]})
+
+    except Exception as e:
+        app.logger.error(f"Error loading group channels: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
 # Add route to save edited playlist
 @app.route('/playlist/<int:user_id>/<path:playlist_name>/save', methods=['POST'])
 def save_edited_playlist(user_id, playlist_name):
@@ -987,35 +1091,53 @@ def save_edited_playlist(user_id, playlist_name):
         # Ensure the directory exists
         playlist_dir.mkdir(parents=True, exist_ok=True)
         
-        # Paths for original and temporary files
-        original_m3u_path = playlist_dir / 'tv.m3u'
-        temp_m3u_path = playlist_dir / 'temp.m3u'
-        backup_m3u_path = playlist_dir / 'tv.m3u.backup'
+        # tv.m3u = protected source (never modified); tv_edited.m3u = working copy
+        edited_m3u_path = playlist_dir / 'tv_edited.m3u'
+        temp_m3u_path = playlist_dir / 'tv_edited.tmp'
 
         data = request.json
         if not data or 'groups' not in data:
             return jsonify({'error': 'Invalid data format'}), 400
 
-        # Create new M3U content
+        # Pre-parse current edited file to fill in groups the user never opened
+        existing_by_group = defaultdict(list)
+        if edited_m3u_path.exists():
+            cur = None
+            with open(edited_m3u_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith('#EXTINF:'):
+                        gm = re.search(r'group-title="([^"]+)"', line)
+                        if gm:
+                            cur = {'extinf': line, 'group': gm.group(1)}
+                    elif line and not line.startswith('#') and cur:
+                        existing_by_group[cur['group']].append({'extinf': cur['extinf'], 'url': line})
+                        cur = None
+        sorted_existing_names = sorted(existing_by_group.keys())
+
+        # Write new edited M3U (source tv.m3u is never touched)
         try:
             with open(temp_m3u_path, 'w', encoding='utf-8') as f:
                 f.write('#EXTM3U\n')
-                for group in data['groups']:
-                    if group.get('visible', True):  # Only include visible groups
-                        for channel in group.get('channels', []):
-                            if channel.get('visible', True):  # Only include visible channels
+                for i, group in enumerate(data['groups']):
+                    if not group.get('visible', True):
+                        continue
+                    channels = group.get('channels')
+                    if channels is None:
+                        # Group never opened — copy its current state from edited file
+                        group_name = sorted_existing_names[i] if i < len(sorted_existing_names) else None
+                        if group_name:
+                            for ch in existing_by_group[group_name]:
+                                f.write(f"{ch['extinf']}\n{ch['url']}\n")
+                    else:
+                        for channel in channels:
+                            if channel.get('visible', True):
                                 extinf = channel.get('extinf', '')
                                 url = channel.get('url', '')
                                 if extinf and url:
-                                    f.write(f"{extinf}\n")
-                                    f.write(f"{url}\n")
+                                    f.write(f"{extinf}\n{url}\n")
 
-            # Backup original file if it exists
-            if original_m3u_path.exists():
-                shutil.copy2(original_m3u_path, backup_m3u_path)
-
-            # Replace original with new version
-            shutil.move(temp_m3u_path, original_m3u_path)
+            shutil.move(temp_m3u_path, edited_m3u_path)
 
             # Update database
             playlist = Playlist.query.filter_by(
@@ -1037,6 +1159,222 @@ def save_edited_playlist(user_id, playlist_name):
 
     except Exception as e:
         app.logger.error(f"Error saving edited playlist: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
+def detect_stream_base(m3u_path):
+    """Auto-detect the stream host base URL from the first stream entry in an M3U file."""
+    try:
+        with open(m3u_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#'):
+                    if 'stream_proxy?url=' in line:
+                        encoded = line.split('stream_proxy?url=', 1)[1]
+                        line = urllib.parse.unquote(encoded)
+                    parsed = urllib.parse.urlparse(line)
+                    if parsed.scheme and parsed.netloc:
+                        return f"{parsed.scheme}://{parsed.netloc}"
+    except Exception:
+        pass
+    return None
+
+
+def apply_mirror_substitution(content, stream_base, active_mirror):
+    """Substitute the stream base URL with the active mirror in M3U content."""
+    if not stream_base or not active_mirror or stream_base == active_mirror:
+        return content
+    # Proxy-wrapped URLs encode only the colon: http%3A//hostname — use safe='/'
+    encoded_orig   = urllib.parse.quote(stream_base,   safe='/')
+    encoded_mirror = urllib.parse.quote(active_mirror, safe='/')
+    content = content.replace(encoded_orig, encoded_mirror)
+    content = content.replace(stream_base, active_mirror)
+    return content
+
+
+@app.route('/playlist/<int:user_id>/<path:playlist_name>/mirrors', methods=['GET'])
+def get_mirrors(user_id, playlist_name):
+    if 'user_id' not in session or session['user_id'] != user_id:
+        return jsonify({'error': 'Unauthorized'}), 403
+    try:
+        playlist = Playlist.query.filter_by(user_id=user_id, name=playlist_name).first()
+        if not playlist:
+            return jsonify({'error': 'Playlist not found'}), 404
+
+        details = dict(playlist.details or {})
+
+        if not details.get('stream_base'):
+            m3u_path = playlist_manager.get_playlist_path(user_id, playlist_name) / 'tv.m3u'
+            base = detect_stream_base(m3u_path)
+            if base:
+                details['stream_base'] = base
+                playlist.details = details
+                db.session.commit()
+
+        return jsonify({
+            'mirrors':        details.get('mirrors', []),
+            'active_mirror':  details.get('active_mirror'),
+            'stream_base':    details.get('stream_base'),
+            'source':         playlist.source,
+            'include_vod':    bool(details.get('include_vod', False)),
+            'include_series': bool(details.get('include_series', False)),
+            'include_proxy':  bool(details.get('include_proxy', False)),
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/playlist/<int:user_id>/<path:playlist_name>/mirrors', methods=['POST'])
+def save_mirrors(user_id, playlist_name):
+    if 'user_id' not in session or session['user_id'] != user_id:
+        return jsonify({'error': 'Unauthorized'}), 403
+    try:
+        playlist = Playlist.query.filter_by(user_id=user_id, name=playlist_name).first()
+        if not playlist:
+            return jsonify({'error': 'Playlist not found'}), 404
+
+        data = request.json or {}
+        details = dict(playlist.details or {})
+        details['mirrors']        = data.get('mirrors', [])
+        details['active_mirror']  = data.get('active_mirror') or None
+        if 'include_vod' in data:
+            details['include_vod']    = bool(data['include_vod'])
+        if 'include_series' in data:
+            details['include_series'] = bool(data['include_series'])
+        if 'include_proxy' in data:
+            details['include_proxy']  = bool(data['include_proxy'])
+        playlist.details = details
+        db.session.commit()
+        return jsonify({'message': 'Mirrors saved.'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/playlist/<int:user_id>/<path:playlist_name>/serve/source')
+def serve_source_playlist(user_id, playlist_name):
+    """Serve tv.m3u (protected source) with active mirror substitution applied."""
+    if 'user_id' not in session or session['user_id'] != user_id:
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    playlist_dir = playlist_manager.get_playlist_path(user_id, playlist_name)
+    source_path = playlist_dir / 'tv.m3u'
+    if not source_path.exists():
+        return jsonify({'error': 'Source playlist not found'}), 404
+
+    playlist = Playlist.query.filter_by(user_id=user_id, name=playlist_name).first()
+    details = (playlist.details or {}) if playlist else {}
+
+    with open(source_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+
+    content = apply_mirror_substitution(content, details.get('stream_base'), details.get('active_mirror'))
+    response = make_response(content)
+    response.headers['Content-Type'] = 'application/x-mpegurl'
+    response.headers['Content-Disposition'] = f'attachment; filename="{secure_filename(playlist_name)}_source.m3u"'
+    return response
+
+
+@app.route('/playlist/<int:user_id>/<path:playlist_name>/serve/edited')
+def serve_edited_playlist(user_id, playlist_name):
+    """Serve tv_edited.m3u with active mirror substitution applied."""
+    if 'user_id' not in session or session['user_id'] != user_id:
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    playlist_dir = playlist_manager.get_playlist_path(user_id, playlist_name)
+    edited_path = playlist_dir / 'tv_edited.m3u'
+
+    if not edited_path.exists():
+        return jsonify({'error': 'No edited playlist yet — open the editor first'}), 404
+
+    playlist = Playlist.query.filter_by(user_id=user_id, name=playlist_name).first()
+    details = (playlist.details or {}) if playlist else {}
+
+    with open(edited_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+
+    content = apply_mirror_substitution(content, details.get('stream_base'), details.get('active_mirror'))
+    response = make_response(content)
+    response.headers['Content-Type'] = 'application/x-mpegurl'
+    response.headers['Content-Disposition'] = f'attachment; filename="{secure_filename(playlist_name)}_edited.m3u"'
+    return response
+
+
+@app.route('/playlist/<int:user_id>/<path:playlist_name>/refresh-source', methods=['POST'])
+def refresh_source(user_id, playlist_name):
+    """Re-download source files using stored credentials. Never touches tv_edited.m3u."""
+    if 'user_id' not in session or session['user_id'] != user_id:
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    try:
+        playlist = Playlist.query.filter_by(user_id=user_id, name=playlist_name).first()
+        if not playlist:
+            return jsonify({'error': 'Playlist not found'}), 404
+
+        details = playlist.details or {}
+        source = playlist.source
+        playlist_dir = playlist_manager.get_playlist_path(user_id, playlist_name)
+        m3u_path = playlist_dir / 'tv.m3u'
+        epg_path = playlist_dir / 'epg.xml'
+
+        if source in ('API Line', 'Xtream API'):
+            username = details.get('username')
+            password = details.get('password')
+            server = details.get('active_mirror') or details.get('server')
+            if not all([server, username, password]):
+                return jsonify({'error': 'Stored credentials incomplete'}), 400
+            m3u_url = f"{server}/get.php?username={username}&password={password}&type=m3u_plus&output=ts"
+            epg_url = f"{server}/xmltv.php?username={username}&password={password}"
+
+            if source == 'Xtream API':
+                include_vod    = details.get('include_vod', False)
+                include_series = details.get('include_series', False)
+                include_proxy  = details.get('include_proxy', False)
+
+                class MockArgs:
+                    def __init__(self, m3uurl, include_vod, include_series, include_proxy, proxy_base):
+                        self.m3uurl = m3uurl
+                        self.include_vod = include_vod
+                        self.include_series = include_series
+                        self.include_proxy = include_proxy
+                        self.proxy_base = proxy_base
+
+                proxy_base = request.host_url.rstrip('/') + '/stream_proxy?url='
+                mock_args = MockArgs(m3u_url, include_vod, include_series, include_proxy,
+                                     proxy_base if include_proxy else None)
+                headers = {'User-Agent': editor.get_random_user_agent(), 'Connection': 'close'}
+                m3u_response = editor.get_m3u_from_api(m3u_url, headers, mock_args)
+                if not m3u_response or m3u_response.status_code != 200:
+                    status = m3u_response.status_code if m3u_response else 'N/A'
+                    return jsonify({'error': f'Failed to fetch M3U from Xtream API (status {status})'}), 500
+                with open(m3u_path, 'wb') as f:
+                    f.write(m3u_response.content)
+                download_file(epg_url, epg_path)
+            else:
+                download_file(m3u_url, m3u_path)
+                download_file(epg_url, epg_path)
+
+        elif source == 'M3U Url':
+            m3u_url = details.get('m3u_url')
+            epg_url = details.get('epg_url')
+            if not m3u_url:
+                return jsonify({'error': 'No M3U URL stored'}), 400
+            download_file(m3u_url, m3u_path)
+            if epg_url:
+                download_file(epg_url, epg_path)
+
+        elif source == 'M3U File':
+            return jsonify({'error': 'File uploads cannot be refreshed — re-upload manually'}), 400
+
+        else:
+            return jsonify({'error': f'Unknown source type: {source}'}), 400
+
+        playlist.last_sync = datetime.utcnow()
+        db.session.commit()
+
+        return jsonify({'message': f'Source refreshed from {source}. Your edited playlist is unchanged.'})
+
+    except Exception as e:
+        app.logger.error(f"Error refreshing source: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 

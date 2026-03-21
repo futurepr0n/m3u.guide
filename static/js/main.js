@@ -39,9 +39,12 @@ function loadPlaylists() {
                         transition: all 0.3s; display: flex; flex-direction: column;">
 
                         <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:1.25rem;">
-                            <div style="background:#353534; padding:0.6rem; border-radius:0.625rem;">
+                            <button onclick="openMirrorModal(${currentUserId}, '${escapeHtml(playlist.name)}')"
+                                    title="Manage alt servers / mirrors"
+                                    style="background:#353534; padding:0.6rem; border-radius:0.625rem; border:none; cursor:pointer; display:flex; align-items:center; transition:background 0.15s;"
+                                    onmouseover="this.style.background='#2a2a2a'" onmouseout="this.style.background='#353534'">
                                 <span class="material-symbols-outlined" style="color:#00d4ff; font-size:1.25rem; font-variation-settings:'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;">playlist_play</span>
-                            </div>
+                            </button>
                             <span style="font-size:0.65rem; font-weight:700; padding:0.2rem 0.6rem; border-radius:9999px; background:#201f1f; color:#a8e8ff; text-transform:uppercase; letter-spacing:0.06em; font-family:'Inter',sans-serif;">
                                 ${escapeHtml(playlist.source)}
                             </span>
@@ -167,29 +170,88 @@ function submitM3uFile() {
     submitPlaylist(formData);
 }
 
-function submitPlaylist(formData) {  // Correct function declaration
+let _jobPollTimer = null;
+let _jobStartTime = null;
+let _activeJobId  = null;
+
+function _showToast(msg, type) {
+    const toast = document.createElement('div');
+    const bg = type === 'success' ? 'rgba(0,160,90,0.95)' : 'rgba(180,35,35,0.95)';
+    toast.style.cssText = `background:${bg}; color:#fff; padding:0.75rem 1.1rem; border-radius:0.5rem;
+        font-size:0.82rem; font-family:Inter,sans-serif; max-width:340px; pointer-events:auto;
+        cursor:pointer; box-shadow:0 4px 24px rgba(0,0,0,0.5); line-height:1.4;`;
+    toast.textContent = msg;
+    toast.onclick = () => toast.remove();
+    document.getElementById('toastContainer').appendChild(toast);
+    setTimeout(() => { if (toast.parentNode) toast.remove(); }, 7000);
+}
+
+function _updateProcessingUI(data) {
+    document.getElementById('statusMessage').textContent = data.step || '…';
+    const steps = (data.steps || []).slice(-6);
+    document.getElementById('processingSteps').innerHTML =
+        steps.map(s => `<div>${s}</div>`).join('');
+    if (_jobStartTime) {
+        const elapsed = Math.floor((Date.now() - _jobStartTime) / 1000);
+        const m = Math.floor(elapsed / 60), s = elapsed % 60;
+        document.getElementById('processingElapsed').textContent =
+            m > 0 ? `${m}m ${s}s` : `${s}s`;
+    }
+}
+
+function _pollJob(jobId) {
+    _jobPollTimer = setTimeout(function () {
+        $.get('/job-status/' + jobId)
+            .done(function (data) {
+                _updateProcessingUI(data);
+                if (data.status === 'running') {
+                    _pollJob(jobId);
+                } else if (data.status === 'complete') {
+                    _activeJobId = null;
+                    $('#processingStatus').hide();
+                    loadPlaylists();
+                    _showToast(
+                        data.analyzed
+                            ? 'Playlist ready! Content analysis complete.'
+                            : 'Playlist added. Run Analyze to build content index.',
+                        'success'
+                    );
+                } else if (data.status === 'error') {
+                    _activeJobId = null;
+                    $('#processingStatus').hide();
+                    _showToast('Processing failed: ' + (data.error || 'Unknown error'), 'error');
+                }
+            })
+            .fail(function () { _pollJob(jobId); }); // retry on network blip
+    }, 1500);
+}
+
+window.addEventListener('beforeunload', function (e) {
+    if (_activeJobId) {
+        e.preventDefault();
+        e.returnValue = 'Playlist is still processing. It will continue in the background, but you may miss the completion notification.';
+    }
+});
+
+function submitPlaylist(formData) {
     $.modal.close();
+    _jobStartTime = Date.now();
+    _updateProcessingUI({ step: 'Connecting…', steps: [] });
     $('#processingStatus').show();
 
-    $.ajax({
-        url: '/process-playlist',
-        type: 'POST',
-        data: formData,
-        processData: false,
-        contentType: false
-    })
+    $.ajax({ url: '/process-playlist', type: 'POST', data: formData, processData: false, contentType: false })
         .done(function (response) {
-            $('#processingStatus').hide();
-            loadPlaylists();
-            if (response.analyzed) {
-                alert('Playlist processed and analyzed successfully');
+            if (response.job_id) {
+                _activeJobId = response.job_id;
+                _pollJob(response.job_id);
             } else {
-                alert('Playlist processed successfully but analysis failed. You can try analyzing again manually.');
+                $('#processingStatus').hide();
+                _showToast('Unexpected server response', 'error');
             }
         })
         .fail(function (error) {
             $('#processingStatus').hide();
-            alert('Error processing playlist: ' + error.responseJSON?.error || 'Unknown error');
+            _showToast('Failed to start: ' + (error.responseJSON?.error || 'Unknown error'), 'error');
         });
 }
 

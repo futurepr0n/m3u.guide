@@ -701,9 +701,14 @@ def fetch_api_endpoint(url, name, headers, timeout=30):
         output_str("Error fetching {}: {}".format(name, e))
         return name, None
 
-def get_m3u_from_api(url, headers, args=None):
+def get_m3u_from_api(url, headers, args=None, progress_cb=None):
     """Enhanced Xtream API retrieval with VOD and Series support"""
-    output_str("Attempting Xtream API retrieval for: " + url)
+    def _prog(msg):
+        output_str(msg)
+        if progress_cb:
+            progress_cb(msg)
+
+    _prog("Connecting to Xtream API…")
     try:
         parsed = urlparse(url)
         params = parse_qs(parsed.query)
@@ -711,43 +716,53 @@ def get_m3u_from_api(url, headers, args=None):
         password = params.get('password', [None])[0]
 
         if not username or not password:
-            output_str("Missing username or password in URL for API retrieval")
+            _prog("Missing username or password in URL for API retrieval")
             return None
 
         base_url = "{}://{}".format(parsed.scheme, parsed.netloc)
-        
+
         # Prepare endpoints
         endpoints = [
             ("{}/player_api.php?username={}&password={}&action=get_live_categories".format(base_url, username, password), "live_categories"),
             ("{}/player_api.php?username={}&password={}&action=get_live_streams".format(base_url, username, password), "live_streams")
         ]
-        
+
         if args and args.include_vod:
+            _prog("VOD (Movies) will be included…")
             endpoints.extend([
                 ("{}/player_api.php?username={}&password={}&action=get_vod_categories".format(base_url, username, password), "vod_categories"),
                 ("{}/player_api.php?username={}&password={}&action=get_vod_streams".format(base_url, username, password), "vod_streams")
             ])
-            
+
         if args and args.include_series:
+            _prog("Series (TV Shows) will be included…")
             endpoints.extend([
                 ("{}/player_api.php?username={}&password={}&action=get_series_categories".format(base_url, username, password), "series_categories"),
                 ("{}/player_api.php?username={}&password={}&action=get_series".format(base_url, username, password), "series_streams")
             ])
 
         # Fetch concurrently
+        _prog("Fetching channel data from provider…")
         results = {}
         with ThreadPoolExecutor(max_workers=5) as executor:
             future_to_name = {executor.submit(fetch_api_endpoint, url, name, headers): name for url, name in endpoints}
             for future in as_completed(future_to_name):
                 name, data = future.result()
                 results[name] = data
+                if name == "live_streams" and data:
+                    _prog("Live channels received ({} streams)…".format(len(data)))
+                elif name == "vod_streams" and data:
+                    _prog("VOD library received ({} titles)…".format(len(data)))
+                elif name == "series_streams" and data:
+                    _prog("Series catalogue received ({} shows)…".format(len(data)))
 
         cat_map = {}
         m3u_lines = ["#EXTM3U"]
-        
+
         # Process Live
         if results.get("live_categories") and results.get("live_streams"):
             cats = {c['category_id']: c['category_name'] for c in results["live_categories"]}
+            _prog("Building live channel entries…")
             for s in results["live_streams"]:
                 m3u_lines.append('#EXTINF:-1 tvg-id="{}" tvg-name="{}" tvg-logo="{}" group-title="{}",{}'.format(
                     s.get('epg_channel_id', ""), s.get('name', ""), s.get('stream_icon', ""), cats.get(s.get('category_id'), "Live"), s.get('name', "")
@@ -760,6 +775,7 @@ def get_m3u_from_api(url, headers, args=None):
         # Process VOD
         if results.get("vod_categories") and results.get("vod_streams"):
             cats = {c['category_id']: c['category_name'] for c in results["vod_categories"]}
+            _prog("Building VOD entries ({} movies)…".format(len(results["vod_streams"])))
             for s in results["vod_streams"]:
                 m3u_lines.append('#EXTINF:-1 tvg-id="{}" tvg-name="{}" tvg-logo="{}" group-title="{}",{}'.format(
                     "", s.get('name', ""), s.get('stream_icon', ""), cats.get(s.get('category_id'), "Movies"), s.get('name', "")
@@ -773,6 +789,8 @@ def get_m3u_from_api(url, headers, args=None):
         if results.get("series_categories") and results.get("series_streams"):
             cats = {c['category_id']: c['category_name'] for c in results["series_categories"]}
             series_list = results["series_streams"]
+            total_series = len(series_list)
+            _prog("Fetching episode details for {} series (this may take a while)…".format(total_series))
 
             def fetch_series_info(series_entry):
                 sid = series_entry.get('series_id')
@@ -782,11 +800,15 @@ def get_m3u_from_api(url, headers, args=None):
                 return series_entry, data
 
             series_lines = []
+            completed_count = [0]
             with ThreadPoolExecutor(max_workers=10) as executor:
                 futures = [executor.submit(fetch_series_info, s) for s in series_list]
                 for future in as_completed(futures):
                     try:
                         series_entry, info = future.result()
+                        completed_count[0] += 1
+                        if completed_count[0] % 20 == 0 or completed_count[0] == total_series:
+                            _prog("Series details {}/{}…".format(completed_count[0], total_series))
                         if not info or 'episodes' not in info:
                             continue
                         category = cats.get(series_entry.get('category_id'), "Series")
@@ -819,6 +841,7 @@ def get_m3u_from_api(url, headers, args=None):
                         output_str("Error fetching series info: {}".format(e))
             m3u_lines.extend(series_lines)
 
+        _prog("Building M3U ({} entries)…".format(len(m3u_lines) // 2))
         output_str("Successfully constructed M3U via API")
 
         class FallbackResponse:

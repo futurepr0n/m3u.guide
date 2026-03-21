@@ -146,11 +146,20 @@
 <body>
 
     <div class="header-actions">
-        <h1 class="header-title">Edit — <span>{{ playlist.name }}</span></h1>
+        <div style="display:flex; align-items:center; gap:1rem;">
+            <a href="/" class="hdr-btn hdr-btn-ghost" style="text-decoration:none; display:inline-flex; align-items:center; gap:0.3rem;">
+                <span class="material-symbols-outlined" style="font-size:1rem;">arrow_back</span>
+                Vault
+            </a>
+            <h1 class="header-title">Edit — <span>{{ playlist.name }}</span></h1>
+        </div>
         <div class="toolbar">
+            <button class="hdr-btn hdr-btn-ghost" onclick="openMirrorModalFromEditor()" title="Manage alt servers / mirrors">Mirrors</button>
+            <button class="hdr-btn hdr-btn-ghost" onclick="refreshSource()" title="Re-download from original source">Refresh Source</button>
+            <button class="hdr-btn hdr-btn-ghost" onclick="copyEditedUrl()" title="Copy edited playlist URL for use in IPTV player">Copy URL</button>
             <button class="hdr-btn hdr-btn-ghost" onclick="resetChanges()">Reset</button>
             <button class="hdr-btn hdr-btn-secondary" onclick="saveChanges()">Save</button>
-            <button class="hdr-btn hdr-btn-primary" onclick="downloadEditedPlaylist()">Download</button>
+            <button class="hdr-btn hdr-btn-primary" onclick="downloadEdited()">Download</button>
         </div>
     </div>
 
@@ -245,7 +254,139 @@
             selectedGroup: null,
             originalData: null
         };
+
+        const _editedUrl = window.location.origin
+            + '/playlist/{{ playlist.user_id }}/{{ playlist.name | urlencode }}/serve/edited';
+
+        function copyEditedUrl() {
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(_editedUrl).then(() => alert('Edited playlist URL copied!'));
+            } else {
+                prompt('Copy this URL into your IPTV player:', _editedUrl);
+            }
+        }
+
+        function downloadEdited() {
+            window.location.href = _editedUrl;
+        }
+
+        function refreshSource() {
+            if (!confirm('Re-download the source playlist from your provider?\n\nYour edited playlist will NOT be affected.')) return;
+            const btn = event.currentTarget;
+            btn.disabled = true;
+            btn.textContent = 'Refreshing…';
+            const baseUrl = window.location.href.replace(/\/edit$/, '');
+            fetch(baseUrl + '/refresh-source', { method: 'POST' })
+                .then(r => r.json())
+                .then(d => {
+                    if (d.error) alert('Error: ' + d.error);
+                    else alert(d.message);
+                })
+                .catch(e => alert('Request failed: ' + e.message))
+                .finally(() => { btn.disabled = false; btn.textContent = 'Refresh Source'; });
+        }
     </script>
     <script src="{{ url_for('static', filename='js/playlist-editor.js') }}"></script>
+
+    <!-- jquery-modal for mirror modal -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jquery-modal/0.9.1/jquery.modal.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-modal/0.9.1/jquery.modal.min.js"></script>
+
+    <!-- Mirror Manager Modal (duplicated from index.html for standalone editor page) -->
+    <div id="mirrorModal" class="modal" style="display:none;">
+        <div class="modal-header"><h2 style="font-family:'Manrope',sans-serif;font-weight:800;font-size:1.1rem;color:#e5e2e1;margin-bottom:1.25rem;">Alt Servers — <span id="mirrorModalTitle"></span></h2></div>
+        <div style="margin-bottom:0.75rem;">
+            <label style="display:block;font-size:0.7rem;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#bbc9cf;margin-bottom:0.4rem;">Stream base (auto-detected)</label>
+            <input type="text" id="mirrorStreamBase" readonly style="width:100%;background:#0e0e0e;border:none;border-radius:9999px;padding:0.6rem 1rem;color:rgba(255,255,255,0.5);font-size:0.78rem;outline:none;cursor:default;">
+            <div style="margin-top:0.35rem;font-size:0.65rem;color:rgba(255,255,255,0.3);">This hostname is substituted in all stream URLs when a mirror is active.</div>
+        </div>
+        <div style="margin-bottom:0.75rem;">
+            <label style="display:block;font-size:0.7rem;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#bbc9cf;margin-bottom:0.4rem;">Active Server</label>
+            <select id="mirrorActiveSelect" style="width:100%;background:#0e0e0e;border:none;border-radius:9999px;padding:0.6rem 1rem;color:#e5e2e1;font-size:0.85rem;outline:none;"></select>
+        </div>
+        <div id="mirrorList" style="margin-bottom:0.75rem;min-height:1rem;"></div>
+        <div style="margin-bottom:0.75rem;">
+            <label style="display:block;font-size:0.7rem;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#bbc9cf;margin-bottom:0.4rem;">Add Mirror URL(s)</label>
+            <input type="text" id="mirrorInput" placeholder="http://backup.online" style="width:100%;background:#0e0e0e;border:none;border-radius:9999px;padding:0.6rem 1rem;color:#e5e2e1;font-size:0.85rem;outline:none;">
+            <button onclick="addMirror()" style="margin-top:0.5rem;width:100%;border-radius:9999px;padding:0.5rem;background:#353534;color:#e5e2e1;border:none;cursor:pointer;font-size:0.8rem;">Add</button>
+        </div>
+        <div style="display:flex;gap:0.5rem;margin-top:1rem;">
+            <button onclick="saveMirrors()" style="flex:1;padding:0.65rem;background:linear-gradient(135deg,#00d4ff,#a8e8ff);color:#003642;border:none;border-radius:9999px;font-weight:700;cursor:pointer;">Save</button>
+            <button onclick="mirrorRefreshSource()" style="flex:1;padding:0.65rem;background:#353534;color:#e5e2e1;border:none;border-radius:9999px;cursor:pointer;font-size:0.85rem;">Refresh Source</button>
+            <button onclick="$.modal.close()" style="flex:1;padding:0.65rem;background:#353534;color:#e5e2e1;border:none;border-radius:9999px;cursor:pointer;font-size:0.85rem;">Close</button>
+        </div>
+    </div>
+
+    <script>
+        // ── Mirror Manager (editor page) ──
+        let _mUserId, _mName, _mList = [], _mBase = '';
+
+        function openMirrorModalFromEditor() {
+            const parts = window.location.pathname.split('/');
+            _mUserId = parts[2];
+            _mName   = parts.slice(3, -1).join('/');
+            document.getElementById('mirrorModalTitle').textContent = _mName;
+            document.getElementById('mirrorStreamBase').value = 'Detecting…';
+            document.getElementById('mirrorList').innerHTML = '';
+            fetch(`/playlist/${_mUserId}/${encodeURIComponent(_mName)}/mirrors`)
+                .then(r => r.json())
+                .then(data => {
+                    _mList = data.mirrors || [];
+                    _mBase = data.stream_base || '';
+                    document.getElementById('mirrorStreamBase').value = _mBase || '(not detected — open editor first)';
+                    _renderMirrorList();
+                    _renderActiveSelect(data.active_mirror);
+                });
+            $('#mirrorModal').modal('show');
+        }
+
+        function _renderMirrorList() {
+            document.getElementById('mirrorList').innerHTML = _mList.length
+                ? _mList.map((m, i) => `
+                    <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.35rem;">
+                        <span style="flex:1;font-size:0.78rem;color:#a8e8ff;word-break:break-all;">${m}</span>
+                        <button onclick="_removeMirror(${i})" style="background:none;border:none;color:rgba(255,255,255,0.35);cursor:pointer;font-size:1.1rem;padding:0.1rem 0.3rem;">×</button>
+                    </div>`).join('')
+                : '<div style="font-size:0.72rem;color:rgba(255,255,255,0.25);margin-bottom:0.5rem;">No mirrors added yet.</div>';
+        }
+
+        function _renderActiveSelect(current) {
+            const sel = document.getElementById('mirrorActiveSelect');
+            sel.innerHTML = '<option value="">Original (default)</option>' +
+                _mList.map(m => `<option value="${m}"${m === current ? ' selected' : ''}>${m}</option>`).join('');
+        }
+
+        function addMirror() {
+            const raw = document.getElementById('mirrorInput').value.trim();
+            raw.split(/[\n,]+/).map(s => s.trim()).filter(Boolean).forEach(url => {
+                if (!_mList.includes(url)) _mList.push(url);
+            });
+            document.getElementById('mirrorInput').value = '';
+            _renderMirrorList();
+            _renderActiveSelect(document.getElementById('mirrorActiveSelect').value);
+        }
+
+        function _removeMirror(i) {
+            const wasActive = document.getElementById('mirrorActiveSelect').value;
+            _mList.splice(i, 1);
+            _renderMirrorList();
+            _renderActiveSelect(wasActive);
+        }
+
+        function saveMirrors() {
+            const active = document.getElementById('mirrorActiveSelect').value || null;
+            fetch(`/playlist/${_mUserId}/${encodeURIComponent(_mName)}/mirrors`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mirrors: _mList, active_mirror: active })
+            }).then(r => r.json()).then(d => alert(d.message || d.error));
+        }
+
+        function mirrorRefreshSource() {
+            if (!confirm('Re-download source playlist using the active mirror?\n\nYour edited playlist is not affected.')) return;
+            fetch(`/playlist/${_mUserId}/${encodeURIComponent(_mName)}/refresh-source`, { method: 'POST' })
+                .then(r => r.json()).then(d => alert(d.message || d.error));
+        }
+    </script>
 </body>
 </html>

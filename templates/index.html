@@ -44,11 +44,22 @@
         .modal .form-group input:focus, .modal .form-group select:focus { box-shadow: 0 0 0 2px #00d4ff; }
         .modal .form-group select option { background: #1c1b1b; }
         .modal .form-group input[type="file"] { border-radius: 0.5rem; padding: 0.5rem 0.75rem; }
-        .modal .form-group input[type="checkbox"] { width: auto; border-radius: 4px; padding: 0; accent-color: #00d4ff; }
-        .modal .checkbox-group label {
-            display: flex; align-items: center; gap: 0.5rem; text-transform: none;
-            letter-spacing: 0; color: #e5e2e1; font-size: 0.875rem; cursor: pointer;
+        .modal .form-group input[type="checkbox"] { display: none; }
+        .xtream-toggle {
+            display: flex; align-items: center; gap: 0.6rem; width: 100%;
+            padding: 0.55rem 0.85rem; background: #0e0e0e;
+            border: 1px solid rgba(255,255,255,0.08); border-radius: 0.5rem;
+            color: rgba(255,255,255,0.45); font-size: 0.82rem; cursor: pointer;
+            transition: all 0.15s; text-align: left; font-family: 'Inter', sans-serif;
+            margin-bottom: 0.4rem;
         }
+        .xtream-toggle:hover { border-color: rgba(255,255,255,0.18); color: rgba(255,255,255,0.7); }
+        .xtream-toggle.active { background: rgba(0,212,255,0.08); border-color: #00d4ff; color: #00d4ff; }
+        .toggle-box {
+            width: 15px; height: 15px; border-radius: 3px; border: 1.5px solid currentColor;
+            flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 10px;
+        }
+        .xtream-toggle.active .toggle-box::after { content: '✓'; }
         .modal .button-group { display: flex; gap: 0.75rem; margin-top: 1.5rem; }
         .modal .btn {
             flex: 1; padding: 0.7rem 1.5rem;
@@ -67,16 +78,28 @@
         /* ── Processing overlay ── */
         #processingStatus {
             position: fixed; inset: 0; z-index: 9999;
-            background: rgba(14,14,14,0.88); backdrop-filter: blur(8px);
-            display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem;
+            background: rgba(14,14,14,0.92); backdrop-filter: blur(10px);
+            display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.25rem;
         }
         #spinner {
-            width: 48px; height: 48px; border: 3px solid #353534;
+            width: 44px; height: 44px; border: 3px solid #353534;
             border-top-color: #00d4ff; border-radius: 50%;
-            animation: spin 0.8s linear infinite;
+            animation: spin 0.8s linear infinite; flex-shrink: 0;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
-        #statusMessage { font-size: 0.78rem; color: #bbc9cf; text-transform: uppercase; letter-spacing: 0.1em; }
+        #processingCard {
+            background: #1c1b1b; border: 1px solid rgba(255,255,255,0.06); border-radius: 0.75rem;
+            padding: 1.5rem 1.75rem; width: min(90vw, 400px); display: flex; flex-direction: column; gap: 0.75rem;
+        }
+        #statusMessage {
+            font-size: 0.85rem; font-weight: 600; color: #e5e2e1;
+            font-family: 'Manrope', sans-serif; letter-spacing: -0.01em;
+        }
+        #processingSteps { min-height: 2.5rem; }
+        #processingSteps div { font-size: 0.68rem; color: rgba(255,255,255,0.32); padding: 0.1rem 0; font-family: 'Inter', sans-serif; }
+        #processingFooter { display: flex; justify-content: space-between; align-items: center; margin-top: 0.25rem; }
+        #processingElapsed { font-size: 0.62rem; color: rgba(255,255,255,0.22); font-family: 'Inter', sans-serif; }
+        #processingHint { font-size: 0.62rem; color: rgba(255,255,255,0.22); font-family: 'Inter', sans-serif; text-align: right; }
 
         /* ── Playlist cards ── */
         .ambient-glow:hover { box-shadow: 0 0 32px rgba(0,212,255,0.08); }
@@ -202,9 +225,19 @@
         <div class="form-group"><label>Username</label><input type="text" id="xtream_username" placeholder="username"></div>
         <div class="form-group"><label>Password</label><input type="password" id="xtream_password" placeholder="password"></div>
         <div class="form-group" style="margin-top: 1rem;">
-            <div class="checkbox-group"><label><input type="checkbox" id="include_vod"> Include VOD (Movies)</label></div>
-            <div class="checkbox-group" style="margin-top: 0.5rem;"><label><input type="checkbox" id="include_series"> Include Series (TV Shows)</label></div>
-            <div class="checkbox-group" style="margin-top: 0.5rem;"><label><input type="checkbox" id="include_proxy"> Proxy Stream URLs (Bypass Blocks)</label></div>
+            <label>Options</label>
+            <button type="button" class="xtream-toggle" data-target="include_vod" onclick="toggleXtream(this)">
+                <span class="toggle-box"></span> Include VOD (Movies)
+            </button>
+            <button type="button" class="xtream-toggle" data-target="include_series" onclick="toggleXtream(this)">
+                <span class="toggle-box"></span> Include Series (TV Shows)
+            </button>
+            <button type="button" class="xtream-toggle" data-target="include_proxy" onclick="toggleXtream(this)">
+                <span class="toggle-box"></span> Proxy Stream URLs (Bypass Blocks)
+            </button>
+            <input type="checkbox" id="include_vod">
+            <input type="checkbox" id="include_series">
+            <input type="checkbox" id="include_proxy">
         </div>
         <div class="button-group">
             <button onclick="submitXtreamApi()" class="btn">Save &amp; Process</button>
@@ -212,14 +245,170 @@
         </div>
     </div>
 
+    <!-- Mirror Manager Modal -->
+    <div id="mirrorModal" class="modal">
+        <div class="modal-header"><h2>Alt Servers — <span id="mirrorModalTitle"></span></h2></div>
+
+        <div class="form-group">
+            <label>Stream base (auto-detected)</label>
+            <input type="text" id="mirrorStreamBase" readonly style="opacity:0.55; cursor:default; font-size:0.8rem;">
+            <div style="margin-top:0.4rem; font-size:0.65rem; color:rgba(255,255,255,0.3);">
+                This hostname is substituted in all stream URLs when a mirror is active.
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>Active Server</label>
+            <select id="mirrorActiveSelect"></select>
+        </div>
+
+        <div id="mirrorList" style="margin-bottom:0.75rem; min-height:1rem;"></div>
+
+        <div class="form-group">
+            <label>Add Mirror URL(s)</label>
+            <input type="text" id="mirrorInput" placeholder="http://backup.online  (or paste newline-separated list)">
+            <button onclick="addMirror()" class="btn-secondary" style="margin-top:0.5rem; width:100%; border-radius:9999px; padding:0.5rem;">Add</button>
+        </div>
+
+        <div id="mirrorOptions" style="display:none;">
+            <div class="form-group" style="margin-top:0.25rem;">
+                <label>Options (applied on Refresh Source)</label>
+                <button type="button" class="xtream-toggle" id="mopt_vod" onclick="this.classList.toggle('active')">
+                    <span class="toggle-box"></span> Include VOD (Movies)
+                </button>
+                <button type="button" class="xtream-toggle" id="mopt_series" onclick="this.classList.toggle('active')">
+                    <span class="toggle-box"></span> Include Series (TV Shows)
+                </button>
+                <button type="button" class="xtream-toggle" id="mopt_proxy" onclick="this.classList.toggle('active')">
+                    <span class="toggle-box"></span> Proxy Stream URLs (Bypass Blocks)
+                </button>
+            </div>
+        </div>
+
+        <div class="button-group">
+            <button onclick="saveMirrors()" class="btn">Save</button>
+            <button onclick="mirrorRefreshSource()" class="btn-secondary">Refresh Source</button>
+            <button onclick="$.modal.close()" class="btn-secondary">Close</button>
+        </div>
+    </div>
+
     <!-- Processing Overlay -->
     <div id="processingStatus" style="display: none;">
         <div id="spinner"></div>
-        <span id="statusMessage">Processing...</span>
+        <div id="processingCard">
+            <span id="statusMessage">Starting…</span>
+            <div id="processingSteps"></div>
+            <div id="processingFooter">
+                <span id="processingElapsed">0s</span>
+                <span id="processingHint">Safe to minimize — processing continues in background</span>
+            </div>
+        </div>
     </div>
+
+    <!-- Toast container -->
+    <div id="toastContainer" style="position:fixed; bottom:1.5rem; right:1.5rem; z-index:10000; display:flex; flex-direction:column; gap:0.5rem; pointer-events:none; align-items:flex-end;"></div>
 
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-modal/0.9.1/jquery.modal.min.js"></script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script>
+        function toggleXtream(btn) {
+            btn.classList.toggle('active');
+            const cb = document.getElementById(btn.dataset.target);
+            if (cb) cb.checked = btn.classList.contains('active');
+        }
+        // ── Mirror / Alt Server Manager ──
+        let _mUserId, _mName, _mList = [], _mBase = '', _mSource = '';
+
+        function _setToggle(id, val) {
+            const el = document.getElementById(id);
+            if (el) el.classList.toggle('active', !!val);
+        }
+
+        function openMirrorModal(userId, playlistName) {
+            _mUserId = userId;
+            _mName   = playlistName;
+            document.getElementById('mirrorModalTitle').textContent = playlistName;
+            document.getElementById('mirrorStreamBase').value = 'Detecting…';
+            document.getElementById('mirrorList').innerHTML = '';
+            fetch(`/playlist/${userId}/${encodeURIComponent(playlistName)}/mirrors`)
+                .then(r => r.json())
+                .then(data => {
+                    _mList   = data.mirrors || [];
+                    _mBase   = data.stream_base || '';
+                    _mSource = data.source || '';
+                    document.getElementById('mirrorStreamBase').value = _mBase || '(not detected — open editor first)';
+                    _renderMirrorList();
+                    _renderActiveSelect(data.active_mirror);
+                    const optsEl = document.getElementById('mirrorOptions');
+                    if (_mSource === 'Xtream API') {
+                        optsEl.style.display = '';
+                        _setToggle('mopt_vod',    data.include_vod);
+                        _setToggle('mopt_series', data.include_series);
+                        _setToggle('mopt_proxy',  data.include_proxy);
+                    } else {
+                        optsEl.style.display = 'none';
+                    }
+                })
+                .catch(() => { document.getElementById('mirrorStreamBase').value = 'Error loading'; });
+            $('#mirrorModal').modal('show');
+        }
+
+        function _renderMirrorList() {
+            document.getElementById('mirrorList').innerHTML = _mList.length
+                ? _mList.map((m, i) => `
+                    <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.35rem;">
+                        <span style="flex:1;font-size:0.78rem;color:#a8e8ff;word-break:break-all;">${m}</span>
+                        <button onclick="_removeMirror(${i})" title="Remove"
+                            style="background:none;border:none;color:rgba(255,255,255,0.35);cursor:pointer;font-size:1.1rem;line-height:1;padding:0.1rem 0.3rem;">×</button>
+                    </div>`).join('')
+                : '<div style="font-size:0.72rem;color:rgba(255,255,255,0.25);margin-bottom:0.5rem;">No mirrors added yet.</div>';
+        }
+
+        function _renderActiveSelect(current) {
+            const sel = document.getElementById('mirrorActiveSelect');
+            sel.innerHTML = '<option value="">Original (default)</option>' +
+                _mList.map(m => `<option value="${m}"${m === current ? ' selected' : ''}>${m}</option>`).join('');
+        }
+
+        function addMirror() {
+            const raw = document.getElementById('mirrorInput').value.trim();
+            raw.split(/[\n,]+/).map(s => s.trim()).filter(Boolean).forEach(url => {
+                if (!_mList.includes(url)) _mList.push(url);
+            });
+            document.getElementById('mirrorInput').value = '';
+            _renderMirrorList();
+            _renderActiveSelect(document.getElementById('mirrorActiveSelect').value);
+        }
+
+        function _removeMirror(i) {
+            const wasActive = document.getElementById('mirrorActiveSelect').value;
+            _mList.splice(i, 1);
+            _renderMirrorList();
+            _renderActiveSelect(wasActive);
+        }
+
+        function saveMirrors() {
+            const active = document.getElementById('mirrorActiveSelect').value || null;
+            const payload = { mirrors: _mList, active_mirror: active };
+            if (_mSource === 'Xtream API') {
+                payload.include_vod    = document.getElementById('mopt_vod').classList.contains('active');
+                payload.include_series = document.getElementById('mopt_series').classList.contains('active');
+                payload.include_proxy  = document.getElementById('mopt_proxy').classList.contains('active');
+            }
+            fetch(`/playlist/${_mUserId}/${encodeURIComponent(_mName)}/mirrors`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            }).then(r => r.json()).then(d => alert(d.message || d.error));
+        }
+
+        function mirrorRefreshSource() {
+            const source = _mBase ? '' : '';
+            if (!confirm('Re-download source playlist using the active mirror?\n\nYour edited playlist is not affected.')) return;
+            fetch(`/playlist/${_mUserId}/${encodeURIComponent(_mName)}/refresh-source`, { method: 'POST' })
+                .then(r => r.json()).then(d => alert(d.message || d.error));
+        }
+    </script>
 </body>
 </html>
