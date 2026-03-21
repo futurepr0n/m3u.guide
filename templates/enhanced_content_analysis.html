@@ -1,535 +1,271 @@
 <!DOCTYPE html>
-<html lang="en">
+<html class="dark" lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Enhanced Content Analysis Demo - M3U.Guide</title>
+    <title>{{ playlist_name }} — Analysis</title>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
     <style>
-        /* Base styles from original analysis pages */
-        body { 
-            font-family: Arial, sans-serif; 
-            line-height: 1.6; 
-            margin: 0; 
-            padding: 20px; 
-            background: #f5f5f5; 
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+
+        html, body {
+            height: 100%; background: #131313; color: #e5e2e1;
+            font-family: 'Inter', sans-serif; overflow: hidden;
         }
-        .container { 
-            max-width: 1200px; 
-            margin: 0 auto; 
+
+        /* ── Top bar ── */
+        .top-bar {
+            height: 56px; background: #131313;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 1.5rem; flex-shrink: 0;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
         }
-        .header { 
-            background: #2c3e50; 
-            color: white; 
-            padding: 20px; 
-            margin-bottom: 20px; 
-            border-radius: 5px; 
+        .top-bar-left { display: flex; align-items: center; gap: 1rem; }
+        .back-link {
+            display: flex; align-items: center; gap: 0.35rem;
+            color: rgba(255,255,255,0.4); text-decoration: none;
+            font-size: 0.7rem; font-weight: 500; text-transform: uppercase;
+            letter-spacing: 0.06em; transition: color 0.15s;
         }
-        
-        /* Demo banner styles */
-        .demo-banner {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 15px 20px;
-            margin-bottom: 20px;
-            border-radius: 5px;
-            border-left: 5px solid #4CAF50;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        .back-link:hover { color: white; }
+        .back-link .material-symbols-outlined { font-size: 16px; }
+        .playlist-title {
+            font-family: 'Manrope', sans-serif; font-weight: 800; font-size: 0.95rem;
+            color: #e5e2e1; letter-spacing: -0.02em;
         }
-        .demo-banner h2 {
-            margin: 0 0 10px 0;
-            font-size: 1.5em;
+        .playlist-title span { color: #00d4ff; }
+
+        .top-bar-right { display: flex; align-items: center; gap: 0.5rem; }
+        .indicator {
+            font-size: 0.65rem; color: rgba(255,255,255,0.25);
+            text-transform: uppercase; letter-spacing: 0.06em;
         }
-        .demo-banner p {
-            margin: 0;
-            opacity: 0.9;
+
+        /* ── Tab bar ── */
+        .tab-bar {
+            height: 48px; background: #0e0e0e;
+            display: flex; align-items: center;
+            padding: 0 1.5rem; gap: 0.4rem; flex-shrink: 0;
+            overflow-x: auto;
         }
-        .demo-banner a {
-            color: #FFE082;
-            text-decoration: none;
-            font-weight: bold;
+        .tab-bar::-webkit-scrollbar { display: none; }
+        .tab-btn {
+            display: flex; align-items: center; gap: 0.4rem;
+            padding: 0.3rem 0.85rem; border-radius: 9999px;
+            background: transparent; color: rgba(255,255,255,0.4);
+            border: none; cursor: pointer;
+            font-family: 'Inter', sans-serif; font-size: 0.7rem;
+            font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em;
+            white-space: nowrap; transition: all 0.15s;
         }
-        .demo-banner a:hover {
-            text-decoration: underline;
+        .tab-btn:hover { background: #353534; color: rgba(255,255,255,0.8); }
+        .tab-btn.active {
+            background: #00d4ff; color: #003642; font-weight: 700;
+            box-shadow: 0 0 16px rgba(0,212,255,0.25);
         }
-        
-        /* Analysis navigation tabs */
-        .analysis-nav {
-            background: white;
-            border-radius: 5px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-            overflow: hidden;
+        .tab-count {
+            font-size: 0.6rem; opacity: 0.7;
+            background: rgba(255,255,255,0.1);
+            padding: 0.05rem 0.35rem; border-radius: 9999px;
         }
-        .analysis-nav ul {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-            display: flex;
-            flex-wrap: wrap;
+        .tab-btn.active .tab-count { background: rgba(0,54,66,0.25); opacity: 1; }
+
+        /* ── Content area ── */
+        .content-area {
+            flex: 1; position: relative; overflow: hidden;
         }
-        .analysis-nav li {
-            flex: 1;
-            min-width: 150px;
+        #content-frame {
+            width: 100%; height: 100%; border: none;
+            display: block; background: #131313;
         }
-        .analysis-nav a {
-            display: block;
-            padding: 15px 20px;
-            text-decoration: none;
-            color: #2c3e50;
-            background: #ecf0f1;
-            border-right: 1px solid #bdc3c7;
-            transition: all 0.3s ease;
-            text-align: center;
+
+        /* ── Loading state ── */
+        .loading-state {
+            position: absolute; inset: 0;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center; gap: 1rem;
+            background: #131313;
         }
-        .analysis-nav a:hover {
-            background: #3498db;
-            color: white;
+        .loading-spinner {
+            width: 36px; height: 36px; border: 2px solid #353534;
+            border-top-color: #00d4ff; border-radius: 50%;
+            animation: spin 0.8s linear infinite;
         }
-        .analysis-nav a.active {
-            background: #2c3e50;
-            color: white;
+        .loading-text {
+            font-size: 0.75rem; color: rgba(255,255,255,0.3);
+            text-transform: uppercase; letter-spacing: 0.1em;
         }
-        
-        /* Content frame for analysis pages */
-        .content-frame {
-            background: white;
-            border-radius: 5px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            position: relative;
-            height: auto;
-        }
-        .content-frame iframe {
-            width: 100%;
-            height: 100vh;
-            border: none;
-            border-radius: 5px;
-        }
-        
-        /* Loading state */
-        .loading {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 200px;
-            color: #7f8c8d;
-        }
-        .loading::after {
-            content: '';
-            width: 20px;
-            height: 20px;
-            border: 2px solid #f3f3f3;
-            border-top: 2px solid #3498db;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin-left: 10px;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        
-        /* Feature showcase */
-        .feature-showcase {
-            background: white;
-            padding: 20px;
-            margin-bottom: 20px;
-            border-radius: 5px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .feature-showcase h3 {
-            color: #2c3e50;
-            margin-bottom: 15px;
-        }
-        .feature-list {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 15px;
-        }
-        .feature-item {
-            background: #ecf0f1;
-            padding: 15px;
-            border-radius: 5px;
-            border-left: 4px solid #3498db;
-        }
-        .feature-item strong {
-            color: #2c3e50;
-        }
-        
-        /* Responsive design */
-        @media (max-width: 768px) {
-            body {
-                padding: 10px;
-            }
-            .analysis-nav ul {
-                flex-direction: column;
-            }
-            .analysis-nav a {
-                border-right: none;
-                border-bottom: 1px solid #bdc3c7;
-            }
-            .feature-list {
-                grid-template-columns: 1fr;
-            }
-        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── Page layout ── */
+        .page { display: flex; flex-direction: column; height: 100vh; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <!-- Header Banner -->
-        <div class="demo-banner">
-            <h2>📊 Enhanced Content Analysis</h2>
-            <p>Advanced content analysis with collapsible groups, search functionality, and optimized performance.</p>
-            <div style="margin-top: 10px;">
-                <a href="/" onclick="cleanupAndNavigate('/')" class="nav-button" style="background: #2ecc71; color: white; padding: 8px 16px; text-decoration: none; border-radius: 5px; margin-right: 10px;">
-                    🏠 Back to Dashboard
-                </a>
-                <a href="/static/playlists/{{ user_id }}/{{ playlist_name }}/analysis/" onclick="cleanupAndNavigate('/static/playlists/{{ user_id }}/{{ playlist_name }}/analysis/')" class="nav-button" style="background: #95a5a6; color: white; padding: 8px 16px; text-decoration: none; border-radius: 5px;">
-                    📄 Classic View
-                </a>
-            </div>
-            <div style="font-size: 0.85em; opacity: 0.9; margin-top: 8px;">
-                📺 Display: <span id="height-indicator">Loading...</span> | 
-                💾 Memory: <span id="memory-indicator">Calculating...</span>
-            </div>
-        </div>
+<div class="page">
 
-        <!-- Header -->
-        <div class="header">
-            <h1>Content Analysis</h1>
-            <p>Playlist: <strong>{{ playlist_name }}</strong> | User: {{ user_id }}</p>
-            <p>Enhanced UI with performance optimizations and advanced navigation</p>
+    <!-- Top bar -->
+    <div class="top-bar">
+        <div class="top-bar-left">
+            <a href="/" class="back-link" onclick="cleanupAndNavigate('/'); return false;">
+                <span class="material-symbols-outlined">arrow_back</span>
+                Vault
+            </a>
+            <div class="playlist-title"><span>{{ playlist_name }}</span> — Analysis</div>
         </div>
-
-        <!-- Feature Showcase -->
-        <div class="feature-showcase">
-            <h3>✨ Enhanced Features</h3>
-            <div class="feature-list">
-                <div class="feature-item">
-                    <strong>🔍 Smart Search</strong><br>
-                    Search across all content with real-time filtering
-                </div>
-                <div class="feature-item">
-                    <strong>📁 Collapsible Groups</strong><br>
-                    Auto-collapse large groups for better performance
-                </div>
-                <div class="feature-item">
-                    <strong>⚡ Optimized Performance</strong><br>
-                    Efficient rendering for large datasets
-                </div>
-                <div class="feature-item">
-                    <strong>📱 Responsive Design</strong><br>
-                    Optimized for desktop, tablet, and mobile
-                </div>
-            </div>
-        </div>
-
-        <!-- Analysis Navigation -->
-        <div class="analysis-nav">
-            <ul>
-                {% if analysis_files.matched %}
-                <li><a href="#" onclick="loadAnalysisPage('matched')" class="nav-link active" data-target="matched">📺 Live TV with EPG</a></li>
-                {% endif %}
-                {% if analysis_files.movies %}
-                <li><a href="#" onclick="loadAnalysisPage('movies')" class="nav-link" data-target="movies">🎬 Movies</a></li>
-                {% endif %}
-                {% if analysis_files.series %}
-                <li><a href="#" onclick="loadAnalysisPage('series')" class="nav-link" data-target="series">📺 TV Series</a></li>
-                {% endif %}
-                {% if analysis_files.unmatched %}
-                <li><a href="#" onclick="loadAnalysisPage('unmatched')" class="nav-link" data-target="unmatched">❓ Unmatched</a></li>
-                {% endif %}
-                {% if analysis_files.no_tvg %}
-                <li><a href="#" onclick="loadAnalysisPage('no_tvg')" class="nav-link" data-target="no_tvg">🔍 No TVG ID</a></li>
-                {% endif %}
-            </ul>
-        </div>
-
-        <!-- Content Frame -->
-        <div class="content-frame">
-            <div id="content-container">
-                <div class="loading">Loading enhanced analysis...</div>
-            </div>
+        <div class="top-bar-right">
+            <span class="indicator" id="memory-indicator"></span>
         </div>
     </div>
 
-    <script>
-        // Demo page functionality
-        let currentPage = 'matched';
-        const availableFiles = {
-            {% for key, value in analysis_files.items() %}
-            "{{ key }}": "{{ value }}",
-            {% endfor %}
-        };
-        
-        function loadAnalysisPage(pageType) {
-            // Update active nav
-            document.querySelectorAll('.nav-link').forEach(link => {
-                link.classList.remove('active');
-            });
-            document.querySelector(`[data-target="${pageType}"]`).classList.add('active');
-            
-            // Show loading
-            document.getElementById('content-container').innerHTML = '<div class="loading">Loading enhanced analysis...</div>';
-            
-            // Load the analysis page with enhancements
-            currentPage = pageType;
-            
-            // Simulate loading and inject enhanced content
-            setTimeout(() => {
-                loadEnhancedContent(pageType);
-            }, 500);
-        }
-        
-        function loadEnhancedContent(pageType) {
-            const filePath = availableFiles[pageType];
-            if (!filePath) {
-                document.getElementById('content-container').innerHTML = 
-                    '<div style="padding: 40px; text-align: center; color: #e74c3c;">Analysis file not found</div>';
-                return;
-            }
-            
-            // Create iframe to load original analysis with enhancements
-            const iframe = document.createElement('iframe');
-            iframe.src = `/static/playlists/{{ user_id }}/{{ playlist_name }}/analysis/${getAnalysisFileName(pageType)}`;
-            iframe.allow = 'clipboard-write; clipboard-read';
-            iframe.onload = () => {
-                // Inject enhancement scripts into iframe
-                injectEnhancements(iframe);
-            };
-            
-            document.getElementById('content-container').innerHTML = '';
-            document.getElementById('content-container').appendChild(iframe);
-        }
-        
-        function getAnalysisFileName(pageType) {
-            const fileMap = {
-                'matched': 'content_analysis_matched.html',
-                'movies': 'content_analysis_movies.html', 
-                'series': 'content_analysis_series.html',
-                'unmatched': 'content_analysis_unmatched.html',
-                'no_tvg': 'content_analysis_unmatched_no_tvg.html'
-            };
-            return fileMap[pageType] || 'content_analysis_matched.html';
-        }
-        
-        function injectEnhancements(iframe) {
-            try {
-                const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-                
-                // Inject collapsible groups script
-                const script = iframeDoc.createElement('script');
-                script.src = '/static/js/content-collapse.js';
-                iframeDoc.head.appendChild(script);
-                
-                // Inject enhancement CSS
-                const link = iframeDoc.createElement('link');
-                link.rel = 'stylesheet';
-                link.href = '/static/css/content-collapse.css';
-                iframeDoc.head.appendChild(link);
-                
-                // Add demo indicator
-                const banner = iframeDoc.createElement('div');
-                banner.innerHTML = `
-                    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                                color: white; padding: 10px; margin: 10px 0; border-radius: 5px; 
-                                text-align: center; font-weight: bold;">
-                        📊 Enhanced Analysis Active - Advanced UI with Copy URL functionality
-                    </div>
-                `;
-                iframeDoc.body.insertBefore(banner, iframeDoc.body.firstChild);
+    <!-- Tab bar -->
+    <div class="tab-bar">
+        {% if analysis_files.matched %}
+        <button class="tab-btn active" onclick="loadPage('matched', this)">
+            <span class="material-symbols-outlined" style="font-size:14px; font-variation-settings:'FILL' 1,'wght' 400,'GRAD' 0,'opsz' 24;">live_tv</span>
+            Live TV
+        </button>
+        {% endif %}
+        {% if analysis_files.movies %}
+        <button class="tab-btn" onclick="loadPage('movies', this)">
+            <span class="material-symbols-outlined" style="font-size:14px; font-variation-settings:'FILL' 1,'wght' 400,'GRAD' 0,'opsz' 24;">movie</span>
+            Movies
+        </button>
+        {% endif %}
+        {% if analysis_files.series %}
+        <button class="tab-btn" onclick="loadPage('series', this)">
+            <span class="material-symbols-outlined" style="font-size:14px; font-variation-settings:'FILL' 1,'wght' 400,'GRAD' 0,'opsz' 24;">tv</span>
+            Series
+        </button>
+        {% endif %}
+        {% if analysis_files.unmatched %}
+        <button class="tab-btn" onclick="loadPage('unmatched', this)">
+            <span class="material-symbols-outlined" style="font-size:14px;">help_outline</span>
+            No EPG
+        </button>
+        {% endif %}
+        {% if analysis_files.no_tvg %}
+        <button class="tab-btn" onclick="loadPage('no_tvg', this)">
+            <span class="material-symbols-outlined" style="font-size:14px;">search_off</span>
+            Other
+        </button>
+        {% endif %}
+    </div>
 
-                // Inject clipboard helper that communicates with parent window
-                const clipboardScript = iframeDoc.createElement('script');
-                clipboardScript.textContent = `
-                    // Override copyStreamUrl to use parent window clipboard
-                    window.copyStreamUrl = function(button, encodedUrl) {
-                        const url = decodeURIComponent(encodedUrl);
-                        
-                        // Try to use parent window clipboard
-                        if (window.parent && window.parent !== window) {
-                            window.parent.postMessage({
-                                type: 'clipboard',
-                                url: url,
-                                buttonId: button.id || 'copy-btn-' + Math.random()
-                            }, '*');
-                            
-                            // Provide immediate visual feedback
-                            const originalHTML = button.innerHTML;
-                            const originalStyle = button.style.cssText;
-                            
-                            button.innerHTML = '<i class="fa fa-copy"></i> Copying...';
-                            button.disabled = true;
-                            
-                            // Listen for response from parent
-                            const messageHandler = function(event) {
-                                if (event.data.type === 'clipboard-result') {
-                                    if (event.data.success) {
-                                        button.innerHTML = '<i class="fa fa-check"></i> Copied!';
-                                        button.style.backgroundColor = '#28a745';
-                                    } else {
-                                        button.innerHTML = '<i class="fa fa-exclamation"></i> Failed';
-                                        button.style.backgroundColor = '#dc3545';
-                                    }
-                                    
-                                    setTimeout(() => {
-                                        button.innerHTML = originalHTML;
-                                        button.style.cssText = originalStyle;
-                                        button.disabled = false;
-                                    }, 2000);
-                                    
-                                    window.removeEventListener('message', messageHandler);
-                                }
-                            };
-                            window.addEventListener('message', messageHandler);
-                        } else {
-                            // Fallback to original method if no parent
-                            const originalCopyStreamUrl = window.originalCopyStreamUrl || function(button, url) {
-                                console.log('Copy URL fallback:', url);
-                                alert('Copy URL: ' + url);
-                            };
-                            originalCopyStreamUrl(button, encodedUrl);
+    <!-- Content -->
+    <div class="content-area">
+        <div class="loading-state" id="loading">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">Loading analysis…</div>
+        </div>
+        <iframe id="content-frame" src="" allow="clipboard-write; clipboard-read" style="opacity:0;"></iframe>
+    </div>
+
+</div>
+
+<script>
+    const fileMap = {
+        'matched':   'content_analysis_matched.html',
+        'movies':    'content_analysis_movies.html',
+        'series':    'content_analysis_series.html',
+        'unmatched': 'content_analysis_unmatched.html',
+        'no_tvg':    'content_analysis_unmatched_no_tvg.html'
+    };
+
+    const basePath = '/static/playlists/{{ user_id }}/{{ playlist_name }}/analysis/';
+    let activeBtn = document.querySelector('.tab-btn.active');
+
+    function loadPage(key, btn) {
+        const frame = document.getElementById('content-frame');
+        const loading = document.getElementById('loading');
+
+        // update tabs
+        if (activeBtn) activeBtn.classList.remove('active');
+        btn.classList.add('active');
+        activeBtn = btn;
+
+        // show loader
+        frame.style.opacity = '0';
+        loading.style.display = 'flex';
+
+        frame.onload = () => {
+            try {
+                injectEnhancements(frame);
+            } catch(e) {}
+            loading.style.display = 'none';
+            frame.style.opacity = '1';
+        };
+        frame.src = basePath + (fileMap[key] || 'content_analysis_matched.html');
+    }
+
+    function injectEnhancements(iframe) {
+        const doc = iframe.contentDocument || iframe.contentWindow.document;
+
+        // inject clipboard bridge
+        const s = doc.createElement('script');
+        s.textContent = `
+            window.copyStreamUrl = function(button, encodedUrl) {
+                const url = decodeURIComponent(encodedUrl);
+                if (window.parent && window.parent !== window) {
+                    const id = 'btn-' + Math.random();
+                    window.parent.postMessage({ type: 'clipboard', url, id }, '*');
+                    const orig = button.innerHTML, origStyle = button.style.cssText;
+                    button.innerHTML = 'Copying…'; button.disabled = true;
+                    const h = e => {
+                        if (e.data.type === 'clipboard-result' && e.data.id === id) {
+                            button.innerHTML = e.data.success ? '✓ Copied' : '✗ Failed';
+                            button.style.background = e.data.success ? '#00d4ff' : '#93000a';
+                            button.style.color = e.data.success ? '#003642' : '#ffdad6';
+                            setTimeout(() => { button.innerHTML = orig; button.style.cssText = origStyle; button.disabled = false; }, 1800);
+                            window.removeEventListener('message', h);
                         }
                     };
-                `;
-                iframeDoc.head.appendChild(clipboardScript);
-                
-            } catch (e) {
-                console.log('Cross-origin restrictions prevent iframe enhancement');
-                // Fallback: show message about cross-origin limitations
-                addCrossOriginMessage();
-            }
-        }
-        
-        function addCrossOriginMessage() {
-            const message = document.createElement('div');
-            message.innerHTML = `
-                <div style="background: #f39c12; color: white; padding: 15px; margin: 20px; 
-                           border-radius: 5px; text-align: center;">
-                    <strong>ℹ️ Demo Limitation:</strong> Cross-origin restrictions prevent iframe enhancements. 
-                    Enhanced features will be fully available when integrated into the main analysis pages.
-                </div>
-            `;
-            document.getElementById('content-container').appendChild(message);
-        }
-        
-        // Update display indicators
-        function updateDisplayIndicators() {
-            const heightIndicator = document.getElementById('height-indicator');
-            const memoryIndicator = document.getElementById('memory-indicator');
-            
-            if (heightIndicator) {
-                heightIndicator.textContent = `Full viewport height (native scrolling)`;
-            }
-            
-            if (memoryIndicator && performance.memory) {
-                const usedMB = Math.round(performance.memory.usedJSHeapSize / 1024 / 1024);
-                const totalMB = Math.round(performance.memory.totalJSHeapSize / 1024 / 1024);
-                memoryIndicator.textContent = `${usedMB}MB / ${totalMB}MB`;
-            } else if (memoryIndicator) {
-                memoryIndicator.textContent = `Monitoring enabled`;
-            }
-        }
-        
-        // Parent window clipboard handler for iframe communication
-        window.addEventListener('message', function(event) {
-            if (event.data.type === 'clipboard') {
-                const url = event.data.url;
-                
-                // Enhanced clipboard API with fallback
-                const copyToClipboard = async (text) => {
-                    if (navigator.clipboard && window.isSecureContext) {
-                        try {
-                            await navigator.clipboard.writeText(text);
-                            return true;
-                        } catch (err) {
-                            console.warn('Clipboard API failed, falling back to execCommand', err);
-                        }
-                    }
-                    
-                    // Fallback for older browsers or insecure contexts
-                    const textArea = document.createElement('textarea');
-                    textArea.value = text;
-                    textArea.style.position = 'fixed';
-                    textArea.style.left = '-999999px';
-                    textArea.style.top = '-999999px';
-                    document.body.appendChild(textArea);
-                    textArea.focus();
-                    textArea.select();
-                    
-                    try {
-                        const successful = document.execCommand('copy');
-                        document.body.removeChild(textArea);
-                        return successful;
-                    } catch (err) {
-                        document.body.removeChild(textArea);
-                        return false;
-                    }
-                };
-                
-                copyToClipboard(url).then(success => {
-                    // Send result back to iframe
-                    event.source.postMessage({
-                        type: 'clipboard-result',
-                        success: success,
-                        buttonId: event.data.buttonId
-                    }, '*');
-                });
-            }
-        });
-        
-        // Cleanup function for navigation
-        function cleanupAndNavigate(url) {
-            // Clear iframe content to free memory
-            const iframe = document.querySelector('.content-frame iframe');
-            if (iframe) {
-                iframe.src = 'about:blank';
-                iframe.remove();
-            }
-            
-            // Clear any remaining DOM content
-            const contentContainer = document.getElementById('content-container');
-            if (contentContainer) {
-                contentContainer.innerHTML = '';
-            }
-            
-            // Force garbage collection if available
-            if (window.gc) {
-                window.gc();
-            }
-            
-            // Navigate to target URL
-            window.location.href = url;
-            return false; // Prevent default link behavior
-        }
-        
-        // Cleanup on browser back button
-        window.addEventListener('beforeunload', function() {
-            cleanupAndNavigate();
-        });
-        
-        // Cleanup on page visibility change (when user switches tabs)
-        document.addEventListener('visibilitychange', function() {
-            if (document.hidden) {
-                // User switched away from tab, cleanup iframe
-                const iframe = document.querySelector('.content-frame iframe');
-                if (iframe) {
-                    iframe.src = 'about:blank';
+                    window.addEventListener('message', h);
                 }
-            }
-        });
-        
-        // Periodic memory monitoring
-        function startMemoryMonitoring() {
-            updateDisplayIndicators();
-            setInterval(updateDisplayIndicators, 5000); // Update every 5 seconds
+            };
+        `;
+        doc.head.appendChild(s);
+    }
+
+    window.addEventListener('message', e => {
+        if (e.data.type === 'clipboard') {
+            const write = async t => {
+                if (navigator.clipboard && window.isSecureContext) {
+                    try { await navigator.clipboard.writeText(t); return true; } catch(_) {}
+                }
+                const ta = Object.assign(document.createElement('textarea'), { value: t, style: 'position:fixed;left:-9999px' });
+                document.body.appendChild(ta); ta.focus(); ta.select();
+                const ok = document.execCommand('copy');
+                document.body.removeChild(ta); return ok;
+            };
+            write(e.data.url).then(success => e.source.postMessage({ type: 'clipboard-result', success, id: e.data.id }, '*'));
         }
-        
-        // Initialize with first available page
-        document.addEventListener('DOMContentLoaded', () => {
-            const firstAvailable = Object.keys(availableFiles)[0] || 'matched';
-            loadAnalysisPage(firstAvailable);
-            startMemoryMonitoring();
-        });
-    </script>
+    });
+
+    function cleanupAndNavigate(url) {
+        const f = document.getElementById('content-frame');
+        if (f) { f.src = 'about:blank'; }
+        window.location.href = url;
+        return false;
+    }
+
+    // Memory indicator
+    function updateMemory() {
+        const el = document.getElementById('memory-indicator');
+        if (el && performance.memory) {
+            el.textContent = Math.round(performance.memory.usedJSHeapSize / 1048576) + 'MB';
+        }
+    }
+    setInterval(updateMemory, 5000);
+
+    // Init — load first available
+    document.addEventListener('DOMContentLoaded', () => {
+        const firstBtn = document.querySelector('.tab-btn');
+        if (firstBtn) firstBtn.click();
+        updateMemory();
+    });
+</script>
 </body>
 </html>

@@ -324,170 +324,76 @@ def generate_series_page_content(channels, group_name):
     css = """
         .series-container {
             display: grid;
-            grid-template-columns: minmax(200px, 1fr) minmax(200px, 1fr) minmax(300px, 2fr);
-            gap: 20px;
-            background: white;
-            padding: 20px;
-            border-radius: 5px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            height: calc(100vh - 250px);
-            min-height: 500px;
+            grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) minmax(280px, 2fr);
+            gap: 1rem;
+            background: transparent;
+            height: calc(100vh - 280px);
+            min-height: 480px;
         }
-        
         .column {
-            background: #f8f9fa;
-            border: 1px solid #dee2e6;
-            border-radius: 5px;
+            background: #1c1b1b;
+            border: 1px solid rgba(255,255,255,0.04);
+            border-radius: 0.75rem;
             overflow-y: auto;
             height: 100%;
         }
-        
+        .column::-webkit-scrollbar { width: 4px; }
+        .column::-webkit-scrollbar-track { background: transparent; }
+        .column::-webkit-scrollbar-thumb { background: #353534; border-radius: 9999px; }
         .column-header {
             position: sticky;
             top: 0;
-            background: #34495e;
-            color: white;
-            padding: 10px 15px;
-            font-weight: bold;
-            border-bottom: 2px solid #2c3e50;
+            background: #201f1f;
+            color: #a8e8ff;
+            padding: 0.75rem 1rem;
+            font-weight: 800;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
         }
-        
         .list-item {
-            padding: 10px 15px;
-            border-bottom: 1px solid #dee2e6;
+            padding: 0.6rem 1rem;
+            border-bottom: 1px solid rgba(255,255,255,0.03);
             cursor: pointer;
-            transition: background-color 0.2s;
+            font-size: 0.825rem;
+            color: #bbc9cf;
+            transition: background 0.15s;
         }
-        
-        .list-item:hover {
-            background: #e9ecef;
-        }
-        
-        .list-item.active {
-            background: #007bff;
-            color: white;
-        }
-        
-        .episode-table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        
+        .list-item:hover { background: rgba(255,255,255,0.03); color: #e5e2e1; }
+        .list-item.active { background: rgba(0,212,255,0.1); color: #00d4ff; }
+        .episode-table { width: 100%; border-collapse: collapse; }
         .episode-table th,
         .episode-table td {
-            padding: 8px 15px;
-            border-bottom: 1px solid #dee2e6;
-            text-align: left;
-        }
-        
-        .episode-table th {
-            background: #f8f9fa;
-            font-weight: bold;
-        }
-        
-        .stream-actions {
-            display: flex;
-            flex-direction: column;
-            gap: 5px;
-        }
-        
-        .stream-actions .action-btn {
-            margin: 2px 0;
-        }
-        
-        .series-info {
-            padding: 10px 15px;
-            background: #f8f9fa;
-            border-bottom: 1px solid #dee2e6;
-            font-size: 0.9em;
-        }
-        
-        .total-episodes {
-            color: #6c757d;
-            font-size: 0.8em;
-            margin-left: 5px;
-        }
-
-        .action-btn {
-            display: inline-block;
-            padding: 4px 8px;
-            margin: 0 4px;
-            border-radius: 4px;
-            text-decoration: none;
-            color: white;
-            font-size: 12px;
-            transition: background-color 0.2s;
-        }
-
-        .download-btn {
-            background-color: #28a745;
-        }
-
-        .download-btn:hover {
-            background-color: #218838;
-        }
-
-        .watch-btn {
-            background-color: #007bff;
-        }
-
-        .watch-btn:hover {
-            background-color: #0056b3;
-        }
-
-        .vlc-btn {
-            background-color: #f58220; /* VLC orange color */
-        }
-
-        .vlc-btn:hover {
-            background-color: #d46e1d;
-        }
-        
-        .vlc-ios-btn {
-            background-color: #007aff; /* iOS blue */
-        }
-        
-        .vlc-ios-btn:hover {
-            background-color: #0062cc;
-        }
-        
-        .vlc-android-btn {
-            background-color: #3ddc84; /* Android green */
-        }
-        
-        .vlc-android-btn:hover {
-            background-color: #2fb76d;
-        }
-        
-        .copy-btn {
-            background-color: #6c757d;
-        }
-        
-        .copy-btn:hover {
-            background-color: #5a6268;
-        }
-        
-        .episode-table th,
-        .episode-table td {
-            padding: 8px 15px;
-            border-bottom: 1px solid #dee2e6;
+            padding: 0.5rem 0.75rem;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
             text-align: left;
             vertical-align: middle;
+            font-size: 0.8rem;
         }
-        
-        .actions-cell {
-            white-space: nowrap;
+        .episode-table th {
+            font-size: 0.65rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: rgba(255,255,255,0.3);
+            background: #131313;
         }
-
+        .stream-actions { display: flex; flex-direction: column; gap: 4px; }
+        .stream-actions .action-btn { margin: 2px 0; }
+        .series-info { padding: 0.75rem 1rem; font-size: 0.8rem; color: #bbc9cf; }
+        .total-episodes {
+            font-size: 0.65rem;
+            background: rgba(0,212,255,0.1);
+            color: #00d4ff;
+            padding: 0.1rem 0.4rem;
+            border-radius: 9999px;
+            margin-left: 0.4rem;
+            font-weight: 600;
+        }
         @media (max-width: 768px) {
-            .stream-actions {
-                flex-direction: column;
-            }
-            
-            .action-btn {
-                margin: 4px 0;
-                text-align: center;
-            }
+            .stream-actions { flex-direction: column; }
+            .action-btn { margin: 4px 0; text-align: center; }
         }
     """
     
@@ -640,11 +546,13 @@ def generate_series_page_content(channels, group_name):
 def generate_group_content(group_name, channels, include_epg=True, is_series=False, is_movie=False):
     """Generate HTML content for a group of channels"""
     if is_series:
+        safe_group_id = 'g-' + ''.join(c if c.isalnum() or c == '-' else '-' for c in group_name.lower())[:60]
         return f"""
-            <div class="group">
+            <div class="group" id="{safe_group_id}">
                 <div class="group-header">
-                    <h2>{group_name}</h2>
-                    <p>{len(channels)} Items</p>
+                    <span class="chevron">&#9660;</span>
+                    <span class="group-name">{group_name}</span>
+                    <span class="group-count" data-total="{len(channels)}">{len(channels)}</span>
                 </div>
                 {generate_series_page_content(channels, group_name)}
             </div>
@@ -665,7 +573,7 @@ def generate_group_content(group_name, channels, include_epg=True, is_series=Fal
         logo_class = 'movie-poster' if is_movie else 'channel-logo'
         logo_html = ''
         if channel.get('logo'):  # Only try to show logo if it exists
-            logo_html = f'<img src="{channel["logo"]}" alt="{"Movie Poster" if is_movie else "Channel Logo"}" class="{logo_class}" onerror="this.style.display=\'none\'">'
+            logo_html = f'<img src="{channel["logo"]}" loading="lazy" alt="{"Movie Poster" if is_movie else "Channel Logo"}" class="{logo_class}" onerror="this.style.display=\'none\'">'
             
         # Actions for movies
         if is_movie and channel.get('url', '').lower().endswith('.mkv'):
@@ -707,8 +615,9 @@ def generate_group_content(group_name, channels, include_epg=True, is_series=Fal
             stream_cell = "<td>No stream URL available</td>"
         
         # Always add the row, regardless of logo presence
+        safe_name = channel['name'].lower().replace('"', '').replace("'", '')
         channel_rows.append(f"""
-            <tr>
+            <tr data-name="{safe_name}">
                 <td class="{'poster-cell' if is_movie else 'logo-cell'}">{logo_html}</td>
                 <td>{channel['name']}</td>
                 {'' if is_movie else f'<td>{channel["tvg_id"]}</td>'}
@@ -721,11 +630,13 @@ def generate_group_content(group_name, channels, include_epg=True, is_series=Fal
     epg_header = '<th>EPG Status</th>' if include_epg else ''
     actions_header = '<th>Actions</th>' if is_movie else ''
     
+    safe_group_id = 'g-' + ''.join(c if c.isalnum() or c == '-' else '-' for c in group_name.lower())[:60]
     return f"""
-        <div class="group">
+        <div class="group" id="{safe_group_id}">
             <div class="group-header">
-                <h2>{group_name}</h2>
-                <p>{len(channels)} Items</p>
+                <span class="chevron">&#9660;</span>
+                <span class="group-name">{group_name}</span>
+                <span class="group-count" data-total="{len(channels)}">{len(channels)}</span>
             </div>
             <table class="{'movie-table' if is_movie else 'channel-table'}">
                 <thead>
@@ -870,56 +781,59 @@ def generate_no_tvg_id_content(group_name, channels):
     css = """
         .three-column-layout {
             display: grid;
-            grid-template-columns: 250px 250px 1fr;
-            gap: 20px;
-            background: white;
-            padding: 20px;
-            border-radius: 5px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            grid-template-columns: 220px 220px 1fr;
+            gap: 1rem;
+            background: transparent;
         }
         .column {
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            height: 600px;
+            background: #1c1b1b;
+            border: 1px solid rgba(255,255,255,0.04);
+            border-radius: 0.75rem;
+            height: 580px;
             overflow-y: auto;
         }
+        .column::-webkit-scrollbar { width: 4px; }
+        .column::-webkit-scrollbar-track { background: transparent; }
+        .column::-webkit-scrollbar-thumb { background: #353534; border-radius: 9999px; }
         .column-header {
-            padding: 10px;
-            background: #34495e;
-            color: white;
+            padding: 0.75rem 1rem;
+            background: #201f1f;
+            color: #a8e8ff;
             position: sticky;
             top: 0;
+            font-size: 0.72rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
         }
-        .item-list {
-            list-style: none;
-            margin: 0;
-            padding: 0;
-        }
+        .item-list { list-style: none; margin: 0; padding: 0; }
         .list-item {
-            padding: 8px 12px;
-            border-bottom: 1px solid #eee;
+            padding: 0.55rem 1rem;
+            border-bottom: 1px solid rgba(255,255,255,0.03);
             cursor: pointer;
+            font-size: 0.8rem;
+            color: #bbc9cf;
+            transition: background 0.15s;
         }
-        .list-item:hover {
-            background: #f8f9fa;
-        }
-        .list-item.active {
-            background: #e9ecef;
-            font-weight: bold;
-        }
-        .episode-table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        .episode-table th,
-        .episode-table td {
-            padding: 8px;
+        .list-item:hover { background: rgba(255,255,255,0.03); color: #e5e2e1; }
+        .list-item.active { background: rgba(0,212,255,0.1); color: #00d4ff; font-weight: 600; }
+        .episode-table { width: 100%; border-collapse: collapse; }
+        .episode-table th, .episode-table td {
+            padding: 0.5rem 0.75rem;
             text-align: left;
-            border-bottom: 1px solid #eee;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+            font-size: 0.8rem;
         }
-        .content-type-selector {
-            margin-bottom: 20px;
+        .episode-table th {
+            font-size: 0.65rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: rgba(255,255,255,0.3);
+            background: #131313;
         }
+        .content-type-selector { margin-bottom: 1rem; }
     """
     
     js = """
@@ -1036,24 +950,37 @@ def generate_shared_header(total_channels, total_epg_matches, total_movies, tota
     """Generate common header HTML used across all pages"""
     return f"""
         <div class="header">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h1>M3U Content Analysis Report</h1>
-                <a href="/" class="back-btn">Back to Playlists</a>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+                <h1>Content Analysis</h1>
+                <a href="/" class="back-btn">&#8592; Playlists</a>
             </div>
-            <div class="timestamp">Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</div>
-            <p>Total Channels with TVG-ID: {total_channels}</p>
-            <p>Channels with EPG Matches: {total_epg_matches}</p>
-            <p>Movies without TVG-ID: {total_movies}</p>
-            <p>Series without TVG-ID: {total_series}</p>
-            <p>Unmatched Content without TVG-ID: {total_unmatched}</p>
+            <div class="timestamp">Generated {datetime.now().strftime('%Y-%m-%d %H:%M')}</div>
+            <div style="display:flex; flex-wrap:wrap; gap:1.5rem; margin-top:0.75rem;">
+                <div><span style="font-family:Manrope,sans-serif;font-weight:800;font-size:1.2rem;color:#00d4ff;">{total_channels}</span><span style="display:block;font-size:0.65rem;text-transform:uppercase;letter-spacing:0.07em;color:rgba(255,255,255,0.35);">With TVG-ID</span></div>
+                <div><span style="font-family:Manrope,sans-serif;font-weight:800;font-size:1.2rem;color:#a8e8ff;">{total_epg_matches}</span><span style="display:block;font-size:0.65rem;text-transform:uppercase;letter-spacing:0.07em;color:rgba(255,255,255,0.35);">EPG Matches</span></div>
+                <div><span style="font-family:Manrope,sans-serif;font-weight:800;font-size:1.2rem;color:rgba(255,255,255,0.6);">{total_movies}</span><span style="display:block;font-size:0.65rem;text-transform:uppercase;letter-spacing:0.07em;color:rgba(255,255,255,0.35);">Movies</span></div>
+                <div><span style="font-family:Manrope,sans-serif;font-weight:800;font-size:1.2rem;color:rgba(255,255,255,0.6);">{total_series}</span><span style="display:block;font-size:0.65rem;text-transform:uppercase;letter-spacing:0.07em;color:rgba(255,255,255,0.35);">Series</span></div>
+                <div><span style="font-family:Manrope,sans-serif;font-weight:800;font-size:1.2rem;color:rgba(255,255,255,0.6);">{total_unmatched}</span><span style="display:block;font-size:0.65rem;text-transform:uppercase;letter-spacing:0.07em;color:rgba(255,255,255,0.35);">Other</span></div>
+            </div>
         </div>
 
         <div class="nav-tabs">
-            <a href="content_analysis_matched.html" class="tab">With EPG ({total_epg_matches})</a>
+            <a href="content_analysis_matched.html" class="tab">EPG ({total_epg_matches})</a>
             <a href="content_analysis_unmatched.html" class="tab">No EPG ({total_channels - total_epg_matches})</a>
             <a href="content_analysis_movies.html" class="tab">Movies ({total_movies})</a>
             <a href="content_analysis_series.html" class="tab">Series ({total_series})</a>
             <a href="content_analysis_unmatched_no_tvg.html" class="tab">Other ({total_unmatched})</a>
+        </div>
+        <div class="search-filter-bar">
+            <div class="search-pill">
+                <i class="fa fa-search s-icon"></i>
+                <input type="text" id="contentSearch" placeholder="Search content\u2026" oninput="filterContent(this.value)" autocomplete="off">
+                <button class="search-clear" id="clearBtn" onclick="clearSearch()" title="Clear">\u00d7</button>
+            </div>
+            <select class="group-jump" id="groupJump" onchange="jumpToGroup(this.value)">
+                <option value="">Jump to group\u2026</option>
+            </select>
+            <span class="result-count" id="resultCount"></span>
         </div>
     """
 
@@ -1156,19 +1083,101 @@ def generate_html_page(title, content, shared_header, css_styles, scripts="", m3
         document.addEventListener('DOMContentLoaded', function() {
             const platform = detectPlatform();
             console.log('Detected platform:', platform);
-            
+
             // Show platform-specific buttons
             document.querySelectorAll('[data-platform]').forEach(button => {
                 if (button.dataset.platform === platform) {
                     button.style.display = 'inline-block';
-                    // Make platform-specific button more prominent
                     button.style.fontWeight = 'bold';
                     button.style.padding = '6px 10px';
                 } else {
                     button.style.display = 'none';
                 }
             });
+
+            // Collapse all groups on load
+            document.querySelectorAll('.group').forEach(g => g.classList.add('collapsed'));
+
+            // Group header click to toggle collapse
+            document.querySelectorAll('.group-header').forEach(h => {
+                h.addEventListener('click', function(e) {
+                    if (e.target.closest('a,button')) return;
+                    this.closest('.group').classList.toggle('collapsed');
+                });
+            });
+
+            // Build group jump dropdown from DOM
+            const sel = document.getElementById('groupJump');
+            if (sel) {
+                document.querySelectorAll('.group[id]').forEach(g => {
+                    const nameEl = g.querySelector('.group-name');
+                    if (nameEl) {
+                        const opt = document.createElement('option');
+                        opt.value = g.id;
+                        opt.textContent = nameEl.textContent.trim();
+                        sel.appendChild(opt);
+                    }
+                });
+            }
         });
+
+        // Real-time search filter (debounced)
+        let _filterTimer;
+        function filterContent(query) {
+            clearTimeout(_filterTimer);
+            _filterTimer = setTimeout(function() {
+                const q = query.toLowerCase().trim();
+                const clearBtn = document.getElementById('clearBtn');
+                if (clearBtn) clearBtn.style.display = q ? 'flex' : 'none';
+                let totalVisible = 0;
+
+                document.querySelectorAll('.group').forEach(function(group) {
+                    const rows = group.querySelectorAll('tr[data-name]');
+                    let groupVisible = 0;
+
+                    if (rows.length > 0) {
+                        rows.forEach(function(row) {
+                            const match = !q || row.dataset.name.includes(q);
+                            row.style.display = match ? '' : 'none';
+                            if (match) groupVisible++;
+                        });
+                    } else {
+                        // Series/other: match against group name
+                        const nameEl = group.querySelector('.group-name');
+                        groupVisible = (!q || (nameEl && nameEl.textContent.toLowerCase().includes(q))) ? 1 : 0;
+                    }
+
+                    totalVisible += groupVisible;
+                    group.style.display = (groupVisible === 0 && q) ? 'none' : '';
+                    if (q) group.classList.remove('collapsed');
+                    else if (!q) group.classList.add('collapsed');
+
+                    const badge = group.querySelector('.group-count');
+                    if (badge) {
+                        badge.textContent = (q && rows.length > 0) ? groupVisible : badge.dataset.total;
+                    }
+                });
+
+                const rc = document.getElementById('resultCount');
+                if (rc) rc.textContent = q ? (totalVisible.toLocaleString() + ' results') : '';
+            }, 150);
+        }
+
+        function clearSearch() {
+            const inp = document.getElementById('contentSearch');
+            if (inp) inp.value = '';
+            filterContent('');
+        }
+
+        function jumpToGroup(groupId) {
+            if (!groupId) return;
+            const el = document.getElementById(groupId);
+            if (!el) return;
+            el.classList.remove('collapsed');
+            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            const sel = document.getElementById('groupJump');
+            if (sel) sel.value = '';
+        }
     """
 
     return f"""
@@ -1177,129 +1186,104 @@ def generate_html_page(title, content, shared_header, css_styles, scripts="", m3
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>{title} - M3U Content Analysis</title>
+        <title>{title} - Content Analysis</title>
+        <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
         <style>
             {css_styles}
-            .nav-tabs {{ display: flex; gap: 10px; margin-bottom: 20px; }}
-            .tab {{ 
-                padding: 10px 20px;
-                background: #34495e;
-                color: white;
-                border-radius: 5px;
+            .nav-tabs {{ display: flex; gap: 0.4rem; margin-bottom: 1.5rem; flex-wrap: wrap; }}
+            .tab {{
+                padding: 0.35rem 0.85rem;
+                background: #353534;
+                color: rgba(255,255,255,0.55);
+                border-radius: 9999px;
                 text-decoration: none;
-                transition: background-color 0.3s;
+                font-family: 'Inter', sans-serif;
+                font-size: 0.7rem;
+                font-weight: 500;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+                transition: all 0.15s;
             }}
-            .tab:hover {{
-                background: #2c3e50;
-            }}
-            .tab.active {{
-                background: #2c3e50;
-            }}
-            
-            /* VLC button styling */
+            .tab:hover {{ background: #2a2a2a; color: white; }}
+            .tab.active {{ background: #00d4ff; color: #003642; font-weight: 700; }}
             .vlc-btn {{
-                background-color: #f58220; /* VLC orange color */
-                color: white;
-                padding: 6px 12px;
-                border-radius: 4px;
+                background: rgba(245,130,32,0.2);
+                color: #ffba3d;
+                padding: 0.28rem 0.65rem;
+                border-radius: 9999px;
                 text-decoration: none;
                 display: inline-block;
-                font-size: 14px;
-                transition: background-color 0.2s;
+                font-family: 'Inter', sans-serif;
+                font-size: 0.68rem;
+                font-weight: 500;
+                text-transform: uppercase;
+                letter-spacing: 0.04em;
+                transition: all 0.15s;
             }}
-            
-            .vlc-btn:hover {{
-                background-color: #d46e1d;
-            }}
-            
-            /* iOS VLC button */
+            .vlc-btn:hover {{ background: rgba(245,130,32,0.35); color: #ffba3d; text-decoration: none; }}
             .vlc-ios-btn {{
-                background-color: #007aff; /* iOS blue */
-                color: white;
-                padding: 6px 12px;
-                border-radius: 4px;
+                background: rgba(0,122,255,0.2);
+                color: #a8e8ff;
+                padding: 0.28rem 0.65rem;
+                border-radius: 9999px;
                 text-decoration: none;
                 display: inline-block;
-                font-size: 14px;
-                transition: background-color 0.2s;
+                font-family: 'Inter', sans-serif;
+                font-size: 0.68rem;
+                font-weight: 500;
+                text-transform: uppercase;
+                letter-spacing: 0.04em;
+                transition: all 0.15s;
             }}
-            
-            .vlc-ios-btn:hover {{
-                background-color: #0062cc;
-            }}
-            
-            /* Android VLC button */
+            .vlc-ios-btn:hover {{ background: rgba(0,122,255,0.35); text-decoration: none; }}
             .vlc-android-btn {{
-                background-color: #3ddc84; /* Android green */
-                color: white;
-                padding: 6px 12px;
-                border-radius: 4px;
+                background: rgba(61,220,132,0.2);
+                color: #3cd7ff;
+                padding: 0.28rem 0.65rem;
+                border-radius: 9999px;
                 text-decoration: none;
                 display: inline-block;
-                font-size: 14px;
-                transition: background-color 0.2s;
+                font-family: 'Inter', sans-serif;
+                font-size: 0.68rem;
+                font-weight: 500;
+                text-transform: uppercase;
+                letter-spacing: 0.04em;
+                transition: all 0.15s;
             }}
-            
-            .vlc-android-btn:hover {{
-                background-color: #2fb76d;
-            }}
-            
-            /* Copy URL button */
+            .vlc-android-btn:hover {{ background: rgba(61,220,132,0.35); text-decoration: none; }}
             .copy-btn {{
-                background-color: #6c757d;
-                color: white;
-                padding: 6px 12px;
-                border-radius: 4px;
+                background: rgba(0,212,255,0.12);
+                color: #a8e8ff;
+                padding: 0.28rem 0.65rem;
+                border-radius: 9999px;
                 border: none;
                 display: inline-block;
-                font-size: 14px;
+                font-family: 'Inter', sans-serif;
+                font-size: 0.68rem;
+                font-weight: 500;
                 cursor: pointer;
-                transition: background-color 0.2s;
+                text-transform: uppercase;
+                letter-spacing: 0.04em;
+                transition: all 0.15s;
             }}
-            
-            .copy-btn:hover {{
-                background-color: #5a6268;
-            }}
-            
-            .stream-cell {{
-                white-space: nowrap;
-            }}
-            
-            .stream-actions {{
-                display: flex;
-                flex-direction: column;
-                gap: 5px;
-            }}
-            
-            /* Platform info box */
+            .copy-btn:hover {{ background: #00d4ff; color: #003642; }}
+            .stream-cell {{ white-space: nowrap; }}
+            .stream-actions {{ display: flex; flex-direction: column; gap: 4px; }}
             .platform-info {{
-                background-color: #f8f9fa;
-                padding: 15px;
-                margin: 20px 0;
-                border-radius: 5px;
-                border-left: 4px solid #f58220;
+                background: rgba(0,212,255,0.05);
+                border-left: 3px solid #00d4ff;
+                padding: 0.65rem 1rem;
+                margin: 0.75rem 0 1.25rem;
+                border-radius: 0 0.5rem 0.5rem 0;
+                font-size: 0.78rem;
+                color: #bbc9cf;
             }}
-            
-            /* Responsive adjustments */
             @media (max-width: 768px) {{
-                .stream-actions {{
-                    flex-direction: column;
-                }}
-                
-                .action-btn {{
-                    margin: 4px 0;
-                    text-align: center;
-                }}
-                
-                .container {{
-                    padding: 10px;
-                }}
-                
-                table {{
-                    display: block;
-                    overflow-x: auto;
-                }}
+                .stream-actions {{ flex-direction: column; }}
+                .action-btn {{ margin: 4px 0; text-align: center; }}
+                .container {{ padding: 0.75rem; }}
+                table {{ display: block; overflow-x: auto; }}
             }}
         </style>
         <script>{scripts}</script>
@@ -1328,194 +1312,301 @@ def generate_split_html_reports(groups, no_tvg_id_groups, matched_groups, output
     """Generate separate HTML reports for each section"""
     # Calculate statistics
     css_styles = """
-        body { 
-            font-family: Arial, sans-serif; 
-            line-height: 1.6; 
-            margin: 0; 
-            padding: 20px; 
-            background: #f5f5f5; 
+        body {
+            font-family: 'Inter', sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+            background: #131313;
+            color: #e5e2e1;
         }
-        .container { 
-            max-width: 1200px; 
-            margin: 0 auto; 
+        .container {
+            width: 100%;
+            padding: 1.25rem 1.5rem;
         }
-        .header { 
-            background: #2c3e50; 
-            color: white; 
-            padding: 20px; 
-            margin-bottom: 20px; 
-            border-radius: 5px; 
+        .header {
+            background: #1c1b1b;
+            padding: 1.25rem 1.5rem;
+            margin-bottom: 1.25rem;
+            border-radius: 0.75rem;
         }
-        .group { 
-            background: white; 
-            padding: 20px; 
-            margin-bottom: 20px; 
-            border-radius: 5px; 
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1); 
+        .header h1 {
+            font-family: 'Manrope', sans-serif;
+            font-weight: 800;
+            font-size: 1.4rem;
+            letter-spacing: -0.03em;
+            color: #e5e2e1;
+            margin: 0;
         }
-        .group-header { 
-            background: #34495e; 
-            color: white; 
-            padding: 10px; 
-            margin: -20px -20px 20px -20px; 
-            border-radius: 5px 5px 0 0; 
+        .header p { color: #bbc9cf; font-size: 0.85rem; margin: 0.2rem 0; }
+        .header .timestamp { font-size: 0.7rem; color: rgba(255,255,255,0.3); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.5rem; display: block; }
+        .group {
+            background: #1c1b1b;
+            padding: 1.25rem 1.5rem;
+            margin-bottom: 0.5rem;
+            border-radius: 0.625rem;
+            content-visibility: auto;
+            contain-intrinsic-size: 0 500px;
         }
-        .epg-match { color: #27ae60; }
-        .epg-no-match { color: #c0392b; }
-        table { 
-            width: 100%; 
-            border-collapse: collapse; 
-            margin-bottom: 20px; 
+        .group-header {
+            background: transparent;
+            color: #a8e8ff;
+            font-family: 'Manrope', sans-serif;
+            font-weight: 800;
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            padding: 0 0 0.6rem 0;
+            margin: 0 0 0.75rem 0;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            cursor: pointer;
+            user-select: none;
         }
-        th, td { 
-            padding: 8px; 
-            text-align: left; 
-            border-bottom: 1px solid #ddd; 
+        .group-header:hover { color: #00d4ff; }
+        .chevron { font-size: 0.7rem; transition: transform 0.2s; flex-shrink: 0; }
+        .group.collapsed .chevron { transform: rotate(-90deg); }
+        .group-name { flex: 1; }
+        .group-count {
+            background: #353534;
+            color: rgba(255,255,255,0.5);
+            padding: 0.1rem 0.5rem;
+            border-radius: 9999px;
+            font-size: 0.68rem;
+            font-weight: 600;
+            font-family: 'Inter', sans-serif;
         }
-        .command { 
-            background: #f8f9fa; 
-            padding: 15px; 
-            border-radius: 5px; 
-            overflow-x: auto; 
-            white-space: pre-wrap; 
+        .group.collapsed > *:not(.group-header) { display: none !important; }
+        .search-filter-bar {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.75rem 0;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: #131313;
         }
-        .section-header { 
-            background: #34495e; 
-            color: white; 
-            padding: 10px; 
-            margin: 20px 0; 
-            border-radius: 5px; 
+        .search-pill {
+            position: relative;
+            flex: 1;
+            min-width: 200px;
+            max-width: 480px;
         }
-        .series-group { margin-bottom: 10px; }
-        .series-header { 
-            background: #34495e; 
-            color: white; 
-            padding: 10px; 
+        .search-pill .s-icon {
+            position: absolute;
+            left: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 14px;
+            color: #00d4ff;
+            pointer-events: none;
+        }
+        .search-pill input {
+            width: 100%;
+            background: #0e0e0e;
+            border: none;
+            border-radius: 9999px;
+            padding: 0.6rem 2.5rem 0.6rem 2.75rem;
+            color: #e5e2e1;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.875rem;
+            outline: none;
+            transition: box-shadow 0.2s;
+        }
+        .search-pill input:focus { box-shadow: 0 0 0 2px #00d4ff; }
+        .search-pill input::placeholder { color: rgba(255,255,255,0.3); }
+        .search-clear {
+            position: absolute;
+            right: 0.75rem;
+            top: 50%;
+            transform: translateY(-50%);
+            background: #353534;
+            border: none;
+            border-radius: 9999px;
+            color: rgba(255,255,255,0.6);
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            font-size: 11px;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+        }
+        .result-count {
+            font-size: 0.7rem;
+            color: rgba(255,255,255,0.4);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            white-space: nowrap;
+        }
+        .group-jump {
+            background: #1c1b1b;
+            border: none;
+            border-radius: 9999px;
+            color: #e5e2e1;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.75rem;
+            padding: 0.55rem 1.1rem;
+            cursor: pointer;
+            outline: none;
+            transition: box-shadow 0.2s;
+            max-width: 240px;
+        }
+        .group-jump:focus { box-shadow: 0 0 0 2px #00d4ff; }
+        .epg-match { color: #00d4ff; }
+        .epg-no-match { color: #ff6b6b; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 0.75rem;
+        }
+        th {
+            padding: 0.55rem 0.75rem;
+            text-align: left;
+            font-size: 0.65rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: rgba(255,255,255,0.3);
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            background: #131313;
+        }
+        td {
+            padding: 0.55rem 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+            font-size: 0.82rem;
+            color: #e5e2e1;
+            vertical-align: middle;
+        }
+        tr:hover td { background: rgba(255,255,255,0.015); }
+        .command {
+            background: #0e0e0e;
+            padding: 0.875rem 1rem;
+            border-radius: 0.5rem;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 0.72rem;
+            color: #a8e8ff;
+            border: 1px solid rgba(0,212,255,0.1);
+        }
+        .section-header {
+            background: transparent;
+            color: #a8e8ff;
+            font-family: 'Manrope', sans-serif;
+            font-weight: 800;
+            font-size: 0.95rem;
+            letter-spacing: -0.01em;
+            padding: 0.4rem 0;
+            margin: 1.25rem 0 0.75rem;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+        }
+        .section-header h2 { margin: 0; font-size: inherit; font-weight: inherit; color: inherit; }
+        .series-group { margin-bottom: 0.375rem; }
+        .series-header {
+            background: #201f1f;
+            color: #e5e2e1;
+            padding: 0.7rem 1rem;
             cursor: pointer;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            border-radius: 5px;
+            border-radius: 0.5rem;
+            font-family: 'Manrope', sans-serif;
+            font-weight: 700;
+            font-size: 0.85rem;
+            transition: background 0.15s;
+            border: 1px solid rgba(255,255,255,0.04);
         }
-        .series-content { 
-            display: none; 
-            padding: 10px;
-            background: white;
-            border: 1px solid #ddd;
-            border-radius: 0 0 5px 5px;
+        .series-header:hover { background: #2a2a2a; }
+        .series-content {
+            display: none;
+            padding: 0.875rem;
+            background: #1c1b1b;
+            border: 1px solid rgba(255,255,255,0.04);
+            border-top: none;
+            border-radius: 0 0 0.5rem 0.5rem;
         }
         .season-content {
-            margin: 10px 0;
-            padding: 10px;
-            background: #f8f9fa;
-            border-radius: 5px;
+            margin: 0.375rem 0;
+            padding: 0.625rem 0.875rem;
+            background: #201f1f;
+            border-radius: 0.375rem;
         }
         .episode-count {
-            font-size: 0.9em;
-            background: rgba(255,255,255,0.2);
-            padding: 3px 8px;
-            border-radius: 3px;
+            font-size: 0.68rem;
+            background: rgba(0,212,255,0.1);
+            color: #00d4ff;
+            padding: 0.1rem 0.45rem;
+            border-radius: 9999px;
         }
         .back-btn {
-            background-color: #6c757d;
-            color: white;
-            padding: 8px 16px;
+            background: #353534;
+            color: rgba(255,255,255,0.65);
+            padding: 0.4rem 0.9rem;
             border: none;
-            border-radius: 4px;
+            border-radius: 9999px;
             text-decoration: none;
-            transition: background-color 0.3s;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.7rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            transition: all 0.15s;
             display: inline-block;
         }
-        
-        .back-btn:hover {
-            background-color: #5a6268;
-            color: white;
-            text-decoration: none;
-        }
-        
-        /* Ensure proper spacing in header */
-        .header h1 {
-            margin: 0;
-        }           
-        /* Movie poster styling with strict size constraints */
+        .back-btn:hover { background: #2a2a2a; color: white; text-decoration: none; }
         .movie-poster {
-            width: 80px !important;           /* Force a fixed width */
-            height: 120px !important;         /* Force a fixed height */
-            object-fit: cover !important;     /* Maintain aspect ratio while covering area */
-            border-radius: 4px;
+            width: 56px !important;
+            height: 84px !important;
+            object-fit: cover !important;
+            border-radius: 0.375rem;
             vertical-align: middle;
             transition: transform 0.3s ease;
         }
-
         .movie-poster:hover {
-            transform: scale(2.5);
-            transform-origin: center left;    /* Hover expands from left side */
+            transform: scale(3);
+            transform-origin: center left;
             position: relative;
             z-index: 1000;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.7);
         }
-
         .poster-cell {
-            width: 80px !important;           /* Match poster width */
-            min-width: 80px !important;       /* Prevent cell from expanding */
-            max-width: 80px !important;       /* Ensure consistent width */
-            padding: 4px !important;
+            width: 66px !important;
+            min-width: 66px !important;
+            max-width: 66px !important;
+            padding: 3px !important;
             position: relative;
         }
-
-        /* Ensure proper table layout */
-        .movie-table {
-            table-layout: fixed !important;
-            width: 100%;
-        }
-
-        /* Override any conflicting styles */
-        .movie-table img {
-            max-width: 80px !important;
-            max-height: 120px !important;
-        }
-
-        /* Action buttons styling */
-        .actions-cell {
-            white-space: nowrap;
-            width: 160px;
-        }
-
+        .movie-table { table-layout: fixed !important; width: 100%; }
+        .movie-table img { max-width: 56px !important; max-height: 84px !important; }
+        .movie-table td { vertical-align: middle; padding: 0.45rem 0.75rem; }
+        .actions-cell { white-space: nowrap; width: 150px; }
         .action-btn {
             display: inline-block;
-            padding: 6px 12px;
-            margin: 0 4px;
-            border-radius: 4px;
+            padding: 0.28rem 0.65rem;
+            margin: 0 2px;
+            border-radius: 9999px;
             text-decoration: none;
-            color: white;
-            font-size: 14px;
-            transition: background-color 0.2s;
+            color: rgba(255,255,255,0.7);
+            font-family: 'Inter', sans-serif;
+            font-size: 0.68rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            transition: all 0.15s;
         }
-
-        .download-btn {
-            background-color: #28a745;
-        }
-
-        .download-btn:hover {
-            background-color: #218838;
-        }
-
-        .watch-btn {
-            background-color: #007bff;
-        }
-
-        .watch-btn:hover {
-            background-color: #0056b3;
-        }
-
-        /* Update movie table for the new column */
-        .movie-table td {
-            vertical-align: middle;
-            padding: 8px;
-        }
-
-
-
+        .action-btn:hover { text-decoration: none; }
+        .download-btn { background: rgba(0,212,255,0.15); color: #a8e8ff; }
+        .download-btn:hover { background: #00d4ff; color: #003642; }
+        .watch-btn { background: rgba(60,215,255,0.15); color: #3cd7ff; }
+        .watch-btn:hover { background: #00d4ff; color: #003642; }
     """
 
     # Define JavaScript scripts

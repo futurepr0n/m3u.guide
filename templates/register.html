@@ -1,31 +1,114 @@
 <!DOCTYPE html>
-<html lang="en">
+<html class="dark" lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Register - Playlist Manager</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <title>m3u.guide — Create Account</title>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            min-height: 100dvh; background: #131313; color: #e5e2e1;
+            font-family: 'Inter', sans-serif;
+            display: flex; align-items: center; justify-content: center;
+            padding: 1.5rem;
+        }
+        .card {
+            width: 100%; max-width: 400px;
+            background: #1c1b1b; border-radius: 1rem; padding: 2.5rem 2rem;
+            border: 1px solid rgba(255,255,255,0.05);
+            box-shadow: 0 24px 60px rgba(0,0,0,0.5);
+        }
+        .brand {
+            display: flex; align-items: center; gap: 0.75rem; margin-bottom: 2.5rem;
+        }
+        .brand-icon {
+            width: 40px; height: 40px; border-radius: 0.75rem;
+            background: linear-gradient(135deg, #00d4ff, #a8e8ff);
+            display: flex; align-items: center; justify-content: center;
+        }
+        .brand-icon svg { width: 20px; height: 20px; fill: #003642; }
+        .brand-name {
+            font-family: 'Manrope', sans-serif; font-weight: 800; font-size: 1.25rem;
+            color: #e5e2e1; letter-spacing: -0.03em;
+        }
+        h2 {
+            font-family: 'Manrope', sans-serif; font-weight: 800; font-size: 1.75rem;
+            color: #e5e2e1; letter-spacing: -0.03em; margin-bottom: 0.5rem;
+        }
+        .subtitle { font-size: 0.85rem; color: #bbc9cf; margin-bottom: 2rem; }
+        .form-group { margin-bottom: 1rem; }
+        label {
+            display: block; font-size: 0.7rem; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.08em;
+            color: #bbc9cf; margin-bottom: 0.4rem;
+        }
+        input[type="text"], input[type="email"], input[type="password"] {
+            width: 100%; background: #0e0e0e; border: none;
+            border-radius: 9999px; padding: 0.75rem 1.25rem;
+            color: #e5e2e1; font-size: 0.875rem; font-family: 'Inter', sans-serif;
+            outline: none; transition: box-shadow 0.2s;
+        }
+        input:focus { box-shadow: 0 0 0 2px #00d4ff; }
+        .flash-messages { margin-bottom: 1rem; }
+        .flash-error {
+            background: rgba(147,0,10,0.3); border-radius: 0.5rem;
+            padding: 0.75rem 1rem; font-size: 0.8rem; color: #ffdad6;
+            margin-bottom: 0.5rem;
+        }
+        .submit-btn {
+            width: 100%; padding: 0.85rem; border: none; border-radius: 9999px;
+            background: linear-gradient(135deg, #00d4ff, #a8e8ff);
+            color: #003642; font-family: 'Manrope', sans-serif; font-weight: 800;
+            font-size: 0.9rem; cursor: pointer; transition: opacity 0.2s;
+            margin-top: 0.5rem; letter-spacing: 0.02em;
+        }
+        .submit-btn:hover { opacity: 0.88; }
+        .auth-link { text-align: center; margin-top: 1.5rem; font-size: 0.8rem; color: #bbc9cf; }
+        .auth-link a { color: #00d4ff; text-decoration: none; font-weight: 600; }
+        .auth-link a:hover { text-decoration: underline; }
+    </style>
 </head>
 <body>
-    <div class="auth-container">
-        <h2>Create Account</h2>
+    <div class="card">
+        <div class="brand">
+            <div class="brand-icon">
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/></svg>
+            </div>
+            <span class="brand-name">m3u.guide</span>
+        </div>
+
+        <h2>Create account</h2>
+        <p class="subtitle">Join to start managing your IPTV playlists.</p>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="flash-messages">
+            {% for category, message in messages %}
+            <div class="flash-error">{{ message }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+
         <form action="{{ url_for('auth.register') }}" method="post">
             <div class="form-group">
                 <label for="username">Username</label>
-                <input type="text" id="username" name="username" required>
+                <input type="text" id="username" name="username" placeholder="choose_a_username" required autocomplete="username">
             </div>
             <div class="form-group">
                 <label for="email">Email</label>
-                <input type="email" id="email" name="email" required>
+                <input type="email" id="email" name="email" placeholder="you@example.com" required autocomplete="email">
             </div>
             <div class="form-group">
                 <label for="password">Password</label>
-                <input type="password" id="password" name="password" required>
+                <input type="password" id="password" name="password" placeholder="••••••••" required autocomplete="new-password">
             </div>
-            <button type="submit" class="btn-primary">Register</button>
+            <button type="submit" class="submit-btn">Create Account</button>
         </form>
+
         <p class="auth-link">
-            Already have an account? <a href="{{ url_for('serve_index') }}">Login</a>
+            Already have an account? <a href="{{ url_for('serve_index') }}">Sign in</a>
         </p>
     </div>
 </body>
