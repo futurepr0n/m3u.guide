@@ -123,33 +123,38 @@
     <!-- Tab bar -->
     <div class="tab-bar">
         {% if analysis_files.matched %}
-        <button class="tab-btn active" onclick="loadPage('matched', this)">
+        <button class="tab-btn active" data-key="matched" onclick="loadPage('matched', this)">
             <span class="material-symbols-outlined" style="font-size:14px; font-variation-settings:'FILL' 1,'wght' 400,'GRAD' 0,'opsz' 24;">live_tv</span>
             Live TV
-        </button>
-        {% endif %}
-        {% if analysis_files.movies %}
-        <button class="tab-btn" onclick="loadPage('movies', this)">
-            <span class="material-symbols-outlined" style="font-size:14px; font-variation-settings:'FILL' 1,'wght' 400,'GRAD' 0,'opsz' 24;">movie</span>
-            Movies
-        </button>
-        {% endif %}
-        {% if analysis_files.series %}
-        <button class="tab-btn" onclick="loadPage('series', this)">
-            <span class="material-symbols-outlined" style="font-size:14px; font-variation-settings:'FILL' 1,'wght' 400,'GRAD' 0,'opsz' 24;">tv</span>
-            Series
+            {% if stats.total_epg_matches %}<span class="tab-count">{{ stats.total_epg_matches | int }}</span>{% endif %}
         </button>
         {% endif %}
         {% if analysis_files.unmatched %}
-        <button class="tab-btn" onclick="loadPage('unmatched', this)">
+        <button class="tab-btn" data-key="unmatched" onclick="loadPage('unmatched', this)">
             <span class="material-symbols-outlined" style="font-size:14px;">help_outline</span>
             No EPG
+            {% if stats.total_channels and stats.total_epg_matches %}<span class="tab-count">{{ (stats.total_channels - stats.total_epg_matches) | int }}</span>{% endif %}
+        </button>
+        {% endif %}
+        {% if analysis_files.movies %}
+        <button class="tab-btn" data-key="movies" onclick="loadPage('movies', this)">
+            <span class="material-symbols-outlined" style="font-size:14px; font-variation-settings:'FILL' 1,'wght' 400,'GRAD' 0,'opsz' 24;">movie</span>
+            Movies
+            {% if stats.total_movies %}<span class="tab-count">{{ stats.total_movies | int }}</span>{% endif %}
+        </button>
+        {% endif %}
+        {% if analysis_files.series %}
+        <button class="tab-btn" data-key="series" onclick="loadPage('series', this)">
+            <span class="material-symbols-outlined" style="font-size:14px; font-variation-settings:'FILL' 1,'wght' 400,'GRAD' 0,'opsz' 24;">tv</span>
+            Series
+            {% if stats.total_series %}<span class="tab-count">{{ stats.total_series | int }}</span>{% endif %}
         </button>
         {% endif %}
         {% if analysis_files.no_tvg %}
-        <button class="tab-btn" onclick="loadPage('no_tvg', this)">
+        <button class="tab-btn" data-key="no_tvg" onclick="loadPage('no_tvg', this)">
             <span class="material-symbols-outlined" style="font-size:14px;">search_off</span>
             Other
+            {% if stats.total_unmatched %}<span class="tab-count">{{ stats.total_unmatched | int }}</span>{% endif %}
         </button>
         {% endif %}
     </div>
@@ -173,27 +178,29 @@
         'unmatched': 'content_analysis_unmatched.html',
         'no_tvg':    'content_analysis_unmatched_no_tvg.html'
     };
+    // Reverse map: filename → key (for syncing iframe navigations back to tab-bar)
+    const fileToKey = Object.fromEntries(Object.entries(fileMap).map(([k,v]) => [v, k]));
 
-    const basePath = '/static/playlists/{{ user_id }}/{{ playlist_name }}/analysis/';
+    const basePath = '/static/playlists/{{ user_id }}/{{ safe_playlist_name }}/analysis/';
     let activeBtn = document.querySelector('.tab-btn.active');
+
+    function setActiveTab(key) {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        const btn = document.querySelector(`.tab-btn[data-key="${key}"]`);
+        if (btn) { btn.classList.add('active'); activeBtn = btn; }
+    }
 
     function loadPage(key, btn) {
         const frame = document.getElementById('content-frame');
         const loading = document.getElementById('loading');
 
-        // update tabs
-        if (activeBtn) activeBtn.classList.remove('active');
-        btn.classList.add('active');
-        activeBtn = btn;
+        setActiveTab(key);
 
-        // show loader
         frame.style.opacity = '0';
         loading.style.display = 'flex';
 
         frame.onload = () => {
-            try {
-                injectEnhancements(frame);
-            } catch(e) {}
+            try { injectEnhancements(frame); } catch(e) {}
             loading.style.display = 'none';
             frame.style.opacity = '1';
         };
@@ -203,7 +210,22 @@
     function injectEnhancements(iframe) {
         const doc = iframe.contentDocument || iframe.contentWindow.document;
 
-        // inject clipboard bridge
+        // Hide the in-page nav-tabs — the tab-bar above handles navigation
+        const style = doc.createElement('style');
+        style.textContent = '.nav-tabs { display: none !important; } .platform-info { display: none !important; }';
+        doc.head.appendChild(style);
+
+        // Intercept any remaining nav-tab link clicks → notify parent to switch tab
+        doc.querySelectorAll('a.tab[href]').forEach(a => {
+            a.addEventListener('click', e => {
+                e.preventDefault();
+                const filename = a.getAttribute('href').split('/').pop();
+                const key = fileToKey[filename];
+                if (key) window.parent.postMessage({ type: 'nav', key }, '*');
+            });
+        });
+
+        // Clipboard bridge
         const s = doc.createElement('script');
         s.textContent = `
             window.copyStreamUrl = function(button, encodedUrl) {
@@ -229,7 +251,12 @@
         doc.head.appendChild(s);
     }
 
+    // Handle messages from iframe (nav sync + clipboard)
     window.addEventListener('message', e => {
+        if (e.data.type === 'nav') {
+            loadPage(e.data.key, document.querySelector(`.tab-btn[data-key="${e.data.key}"]`));
+            return;
+        }
         if (e.data.type === 'clipboard') {
             const write = async t => {
                 if (navigator.clipboard && window.isSecureContext) {
@@ -260,7 +287,7 @@
     }
     setInterval(updateMemory, 5000);
 
-    // Init — load first available
+    // Init — load first available tab
     document.addEventListener('DOMContentLoaded', () => {
         const firstBtn = document.querySelector('.tab-btn');
         if (firstBtn) firstBtn.click();
