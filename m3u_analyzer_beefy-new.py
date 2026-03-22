@@ -977,7 +977,7 @@ def generate_shared_header(total_channels, total_epg_matches, total_movies, tota
                 <input type="text" id="contentSearch" placeholder="Search content\u2026" oninput="filterContent(this.value)" autocomplete="off">
                 <button class="search-clear" id="clearBtn" onclick="clearSearch()" title="Clear">\u00d7</button>
             </div>
-            <select class="group-jump" id="groupJump" onchange="jumpToGroup(this.value)">
+            <select class="group-jump" id="groupJump" onchange="jumpToGroup(this.value)" style="display:none">
                 <option value="">Jump to group\u2026</option>
             </select>
             <span class="result-count" id="resultCount"></span>
