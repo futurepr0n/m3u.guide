@@ -720,15 +720,25 @@ def enhanced_content_analysis(user_id, playlist_name):
         
         # Find which analysis files exist
         available_files = {k: v for k, v in analysis_files.items() if os.path.exists(v)}
-        
+
         if not available_files:
             return "No analysis files found. Please run analysis first.", 404
-            
+
+        # Read stats from command.json for tab counts
+        import json as _json
+        stats = {}
+        command_json = os.path.join(analysis_dir, 'command.json')
+        if os.path.exists(command_json):
+            with open(command_json) as f:
+                stats = _json.load(f)
+
         # Serve enhanced analysis version
-        return render_template('enhanced_content_analysis.html', 
-                             user_id=user_id, 
+        return render_template('enhanced_content_analysis.html',
+                             user_id=user_id,
                              playlist_name=playlist_name,
-                             analysis_files=available_files)
+                             safe_playlist_name=secure_filename(playlist_name),
+                             analysis_files=available_files,
+                             stats=stats)
                              
     except Exception as e:
         app.logger.error(f"Enhanced analysis error: {str(e)}")
