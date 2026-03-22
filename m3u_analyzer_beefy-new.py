@@ -1103,7 +1103,8 @@ def generate_html_page(title, content, shared_header, css_styles, scripts="", m3
             if (btn) copyStreamUrl(btn, btn.dataset.url);
         });
 
-        document.addEventListener('DOMContentLoaded', function() {
+        // Script is at bottom of body — DOM is already ready, run immediately
+        (function() {
             var platform = detectPlatform();
 
             // Show platform-specific buttons (for non-lazy pages)
@@ -1136,7 +1137,7 @@ def generate_html_page(title, content, shared_header, css_styles, scripts="", m3
                     }
                 });
             }
-        });
+        })();
 
         // Real-time search filter (debounced) — works in both DOM and lazy-data mode
         var _filterTimer;
