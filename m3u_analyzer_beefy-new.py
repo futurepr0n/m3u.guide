@@ -1053,7 +1053,7 @@ def generate_html_page(title, content, shared_header, css_styles, scripts="", m3
                 var name = ch.n || '', url = ch.u || '', logo = ch.l || '';
                 var enc = encodeURIComponent(url);
                 var safeName = name.toLowerCase().replace(/[^a-z0-9 ]/g, ' ');
-                var logoHtml = logo ? '<img src="' + logo + '" loading="lazy" class="' + (isMovie ? 'movie-poster' : 'channel-logo') + '" onerror="this.style.display=\'none\'">' : '';
+                var logoHtml = logo ? '<img src="' + logo + '" loading="lazy" class="' + (isMovie ? 'movie-poster' : 'channel-logo') + '" onerror="this.style.display=\\'none\\'">' : '';
                 var isMkv = url.toLowerCase().indexOf('.mkv') !== -1;
                 var dlBtn = (isMovie && isMkv) ? '<a href="' + url + '" class="action-btn download-btn" download>Download</a>' : '';
                 var watchBtn = '<a href="/watch_video?url=' + enc + '" class="action-btn watch-btn"><i class="fa fa-play"></i> Watch</a>';
@@ -1092,7 +1092,7 @@ def generate_html_page(title, content, shared_header, css_styles, scripts="", m3
                     return '<details style="margin:0.25rem 0"><summary style="cursor:pointer;font-size:0.72rem;color:#a8e8ff;padding:0.3rem 0">Season ' + s + ' <span style="opacity:.5">(' + eps.length + ' eps)</span></summary><table style="width:100%;margin-top:0.25rem"><tbody>' + epRows + '</tbody></table></details>';
                 }).join('');
                 var safeSn = sn.toLowerCase().replace(/[^a-z0-9 ]/g, ' ');
-                return '<div class="series-entry" data-name="' + safeSn + '" style="background:#201f1f;border-radius:.375rem;margin:.25rem 0"><div style="padding:.5rem .75rem;cursor:pointer;font-size:.8rem;color:#e5e2e1;display:flex;justify-content:space-between" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display===\'none\'?\'block\':\'none\'"><span>' + sn + '</span><span style="color:rgba(255,255,255,.35);font-size:.7rem">' + totalEps + ' eps</span></div><div style="display:none;padding:0 .75rem .5rem">' + seasonItems + '</div></div>';
+                return '<div class="series-entry" data-name="' + safeSn + '" style="background:#201f1f;border-radius:.375rem;margin:.25rem 0"><div style="padding:.5rem .75rem;cursor:pointer;font-size:.8rem;color:#e5e2e1;display:flex;justify-content:space-between" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display===\\'none\\'?\\'block\\':\\'none\\'"><span>' + sn + '</span><span style="color:rgba(255,255,255,.35);font-size:.7rem">' + totalEps + ' eps</span></div><div style="display:none;padding:0 .75rem .5rem">' + seasonItems + '</div></div>';
             }).join('');
             return '<div style="padding:.5rem 0">' + listItems + '</div>';
         }
