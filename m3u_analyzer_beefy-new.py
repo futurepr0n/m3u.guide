@@ -1001,181 +1001,263 @@ def generate_html_page(title, content, shared_header, css_styles, scripts="", m3
         // Platform detection
         function detectPlatform() {
             const userAgent = navigator.userAgent || navigator.vendor || window.opera;
-            
-            // iOS detection
-            if (/iPad|iPhone|iPod/.test(userAgent) && !window.MSStream) {
-                return 'ios';
-            }
-            
-            // Android detection
-            if (/android/i.test(userAgent)) {
-                return 'android';
-            }
-            
-            // Default to desktop
+            if (/iPad|iPhone|iPod/.test(userAgent) && !window.MSStream) return 'ios';
+            if (/android/i.test(userAgent)) return 'android';
             return 'desktop';
         }
-        
+
         // Copy stream URL to clipboard
         function copyStreamUrl(button, url) {
             const decodedUrl = decodeURIComponent(url);
-            
-            // Enhanced clipboard API with fallback
             const copyToClipboard = async (text) => {
                 if (navigator.clipboard && window.isSecureContext) {
-                    try {
-                        await navigator.clipboard.writeText(text);
-                        return true;
-                    } catch (err) {
-                        console.warn('Clipboard API failed, falling back to execCommand', err);
-                    }
+                    try { await navigator.clipboard.writeText(text); return true; } catch (err) {}
                 }
-                
-                // Fallback for older browsers or insecure contexts
                 const textArea = document.createElement('textarea');
                 textArea.value = text;
-                textArea.style.position = 'fixed';
-                textArea.style.left = '-999999px';
-                textArea.style.top = '-999999px';
-                document.body.appendChild(textArea);
-                textArea.focus();
-                textArea.select();
-                
-                try {
-                    const successful = document.execCommand('copy');
-                    document.body.removeChild(textArea);
-                    return successful;
-                } catch (err) {
-                    document.body.removeChild(textArea);
-                    return false;
-                }
+                textArea.style.position = 'fixed'; textArea.style.left = '-999999px';
+                document.body.appendChild(textArea); textArea.focus(); textArea.select();
+                try { const ok = document.execCommand('copy'); document.body.removeChild(textArea); return ok; }
+                catch (err) { document.body.removeChild(textArea); return false; }
             };
-            
             copyToClipboard(decodedUrl).then(success => {
-                const originalHTML = button.innerHTML;
-                const originalStyle = button.style.cssText;
-                
-                if (success) {
-                    // Success feedback
-                    button.innerHTML = '<i class="fa fa-check"></i> Copied!';
-                    button.style.backgroundColor = '#28a745';
-                    button.disabled = true;
-                    
-                    setTimeout(() => {
-                        button.innerHTML = originalHTML;
-                        button.style.cssText = originalStyle;
-                        button.disabled = false;
-                    }, 2000);
-                } else {
-                    // Error feedback
-                    button.innerHTML = '<i class="fa fa-exclamation"></i> Failed';
-                    button.style.backgroundColor = '#dc3545';
-                    
-                    setTimeout(() => {
-                        button.innerHTML = originalHTML;
-                        button.style.cssText = originalStyle;
-                    }, 2000);
-                }
+                const originalHTML = button.innerHTML, originalStyle = button.style.cssText;
+                button.innerHTML = success ? '<i class="fa fa-check"></i> Copied!' : '<i class="fa fa-exclamation"></i> Failed';
+                button.style.backgroundColor = success ? '#28a745' : '#dc3545';
+                button.disabled = true;
+                setTimeout(() => { button.innerHTML = originalHTML; button.style.cssText = originalStyle; button.disabled = false; }, 2000);
             });
         }
-        
-        // Show only relevant platform buttons
-        document.addEventListener('DOMContentLoaded', function() {
-            const platform = detectPlatform();
-            console.log('Detected platform:', platform);
 
-            // Show platform-specific buttons
-            document.querySelectorAll('[data-platform]').forEach(button => {
-                if (button.dataset.platform === platform) {
-                    button.style.display = 'inline-block';
-                    button.style.fontWeight = 'bold';
-                    button.style.padding = '6px 10px';
-                } else {
-                    button.style.display = 'none';
-                }
+        // ── Lazy group renderer ──────────────────────────────────────────────────────
+        function _renderGroup(group) {
+            var gid = group.id;
+            var body = group.querySelector('.group-body');
+            if (!body || body.dataset.rendered) return;
+            body.dataset.rendered = '1';
+            if (typeof _GDATA === 'undefined' || !_GDATA[gid]) return;
+
+            var data = _GDATA[gid];
+            var type = typeof _GTYPE !== 'undefined' ? _GTYPE : 'channel';
+            var platform = detectPlatform();
+
+            if (type === 'series') {
+                body.innerHTML = _buildSeriesHTML(data);
+            } else {
+                body.innerHTML = _buildTableHTML(data, type === 'movie', platform);
+            }
+        }
+
+        function _buildTableHTML(channels, isMovie, platform) {
+            var rows = channels.map(function(ch) {
+                var name = ch.n || '', url = ch.u || '', logo = ch.l || '';
+                var enc = encodeURIComponent(url);
+                var safeName = name.toLowerCase().replace(/[^a-z0-9 ]/g, ' ');
+                var logoHtml = logo ? '<img src="' + logo + '" loading="lazy" class="' + (isMovie ? 'movie-poster' : 'channel-logo') + '" onerror="this.style.display=\'none\'">' : '';
+                var isMkv = url.toLowerCase().indexOf('.mkv') !== -1;
+                var dlBtn = (isMovie && isMkv) ? '<a href="' + url + '" class="action-btn download-btn" download>Download</a>' : '';
+                var watchBtn = '<a href="/watch_video?url=' + enc + '" class="action-btn watch-btn"><i class="fa fa-play"></i> Watch</a>';
+                var dShow = platform === 'desktop' ? 'inline-block' : 'none';
+                var iShow = platform === 'ios' ? 'inline-block' : 'none';
+                var aShow = platform === 'android' ? 'inline-block' : 'none';
+                var vlcD = '<a href="vlc://' + enc + '" class="action-btn vlc-btn" data-platform="desktop" style="display:' + dShow + '"><i class="fa fa-play-circle"></i> VLC Desktop</a>';
+                var vlcI = '<a href="vlc-x-callback://x-callback-url/stream?url=' + enc + '" class="action-btn vlc-ios-btn" data-platform="ios" style="display:' + iShow + '"><i class="fa fa-play-circle"></i> VLC iOS</a>';
+                var vlcA = '<a href="intent://' + enc + '#Intent;package=org.videolan.vlc;action=android.intent.action.VIEW;end" class="action-btn vlc-android-btn" data-platform="android" style="display:' + aShow + '"><i class="fa fa-play-circle"></i> VLC Android</a>';
+                var copyBtn = '<button class="action-btn copy-btn lazy-copy-btn" data-url="' + enc + '"><i class="fa fa-copy"></i> Copy URL</button>';
+                var streamCell = '<td class="stream-cell"><div class="stream-actions">' + watchBtn + vlcD + vlcI + vlcA + copyBtn + '</div></td>';
+                var logoCell = '<td class="' + (isMovie ? 'poster-cell' : 'logo-cell') + '">' + logoHtml + '</td>';
+                var actionsCell = isMovie ? ('<td class="actions-cell">' + dlBtn + watchBtn + '</td>') : '';
+                return '<tr data-name="' + safeName + '">' + logoCell + '<td>' + name + '</td>' + actionsCell + streamCell + '</tr>';
+            }).join('');
+            var header = isMovie
+                ? '<tr><th width="66">Poster</th><th>Name</th><th>Actions</th><th>Stream</th></tr>'
+                : '<tr><th width="40">Logo</th><th>Name</th><th>Stream</th></tr>';
+            return '<table class="' + (isMovie ? 'movie-table' : 'channel-table') + '"><thead>' + header + '</thead><tbody>' + rows + '</tbody></table>';
+        }
+
+        function _buildSeriesHTML(seriesObj) {
+            var names = Object.keys(seriesObj).sort();
+            if (!names.length) return '<p style="color:rgba(255,255,255,0.3);padding:1rem;">No series data</p>';
+            var listItems = names.map(function(sn) {
+                var seasons = seriesObj[sn];
+                var totalEps = Object.values(seasons).reduce(function(a, s) { return a + s.length; }, 0);
+                var safeId = 'sr-' + sn.replace(/[^a-z0-9]/gi, '-').toLowerCase().slice(0, 40);
+                var seasonItems = Object.keys(seasons).sort(function(a,b){return+a-+b;}).map(function(s) {
+                    var eps = seasons[s];
+                    var epRows = eps.sort(function(a,b){return a.ep-b.ep;}).map(function(ep) {
+                        var enc = encodeURIComponent(ep.u || '');
+                        var copyBtn = ep.u ? '<button class="action-btn copy-btn lazy-copy-btn" data-url="' + enc + '" style="padding:2px 8px;font-size:0.65rem;"><i class="fa fa-copy"></i></button>' : '';
+                        return '<tr><td style="color:rgba(255,255,255,0.5);font-size:0.75rem;width:40px">E' + String(ep.ep).padStart(2,'0') + '</td><td style="font-size:0.78rem">' + ep.n + '</td><td>' + copyBtn + '</td></tr>';
+                    }).join('');
+                    return '<details style="margin:0.25rem 0"><summary style="cursor:pointer;font-size:0.72rem;color:#a8e8ff;padding:0.3rem 0">Season ' + s + ' <span style="opacity:.5">(' + eps.length + ' eps)</span></summary><table style="width:100%;margin-top:0.25rem"><tbody>' + epRows + '</tbody></table></details>';
+                }).join('');
+                var safeSn = sn.toLowerCase().replace(/[^a-z0-9 ]/g, ' ');
+                return '<div class="series-entry" data-name="' + safeSn + '" style="background:#201f1f;border-radius:.375rem;margin:.25rem 0"><div style="padding:.5rem .75rem;cursor:pointer;font-size:.8rem;color:#e5e2e1;display:flex;justify-content:space-between" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display===\'none\'?\'block\':\'none\'"><span>' + sn + '</span><span style="color:rgba(255,255,255,.35);font-size:.7rem">' + totalEps + ' eps</span></div><div style="display:none;padding:0 .75rem .5rem">' + seasonItems + '</div></div>';
+            }).join('');
+            return '<div style="padding:.5rem 0">' + listItems + '</div>';
+        }
+
+        // Delegated click handler for lazy copy buttons
+        document.addEventListener('click', function(e) {
+            var btn = e.target.closest('.lazy-copy-btn');
+            if (btn) copyStreamUrl(btn, btn.dataset.url);
+        });
+
+        document.addEventListener('DOMContentLoaded', function() {
+            var platform = detectPlatform();
+
+            // Show platform-specific buttons (for non-lazy pages)
+            document.querySelectorAll('[data-platform]').forEach(function(button) {
+                button.style.display = button.dataset.platform === platform ? 'inline-block' : 'none';
             });
 
             // Collapse all groups on load
-            document.querySelectorAll('.group').forEach(g => g.classList.add('collapsed'));
+            document.querySelectorAll('.group').forEach(function(g) { g.classList.add('collapsed'); });
 
-            // Group header click to toggle collapse
-            document.querySelectorAll('.group-header').forEach(h => {
+            // Group header click: lazy-render then toggle collapse
+            document.querySelectorAll('.group-header').forEach(function(h) {
                 h.addEventListener('click', function(e) {
                     if (e.target.closest('a,button')) return;
-                    this.closest('.group').classList.toggle('collapsed');
+                    var group = this.closest('.group');
+                    _renderGroup(group);
+                    group.classList.toggle('collapsed');
                 });
             });
 
             // Build group jump dropdown from DOM
-            const sel = document.getElementById('groupJump');
+            var sel = document.getElementById('groupJump');
             if (sel) {
-                document.querySelectorAll('.group[id]').forEach(g => {
-                    const nameEl = g.querySelector('.group-name');
+                document.querySelectorAll('.group[id]').forEach(function(g) {
+                    var nameEl = g.querySelector('.group-name');
                     if (nameEl) {
-                        const opt = document.createElement('option');
-                        opt.value = g.id;
-                        opt.textContent = nameEl.textContent.trim();
+                        var opt = document.createElement('option');
+                        opt.value = g.id; opt.textContent = nameEl.textContent.trim();
                         sel.appendChild(opt);
                     }
                 });
             }
         });
 
-        // Real-time search filter (debounced)
-        let _filterTimer;
+        // Real-time search filter (debounced) — works in both DOM and lazy-data mode
+        var _filterTimer;
         function filterContent(query) {
             clearTimeout(_filterTimer);
             _filterTimer = setTimeout(function() {
-                const q = query.toLowerCase().trim();
-                const clearBtn = document.getElementById('clearBtn');
+                var q = query.toLowerCase().trim();
+                var clearBtn = document.getElementById('clearBtn');
                 if (clearBtn) clearBtn.style.display = q ? 'flex' : 'none';
-                let totalVisible = 0;
+                var totalVisible = 0;
+                var lazyMode = typeof _GDATA !== 'undefined';
 
                 document.querySelectorAll('.group').forEach(function(group) {
-                    const rows = group.querySelectorAll('tr[data-name]');
-                    let groupVisible = 0;
+                    var gid = group.id;
+                    var badge = group.querySelector('.group-count');
 
-                    if (rows.length > 0) {
-                        rows.forEach(function(row) {
-                            const match = !q || row.dataset.name.includes(q);
-                            row.style.display = match ? '' : 'none';
-                            if (match) groupVisible++;
-                        });
+                    if (lazyMode && _GDATA[gid]) {
+                        // ── Data-driven search (lazy pages) ─────────────────
+                        var data = _GDATA[gid];
+                        var gname = (group.querySelector('.group-name') || {}).textContent || '';
+                        var gMatch = !q || gname.toLowerCase().includes(q);
+
+                        if (!q) {
+                            group.style.display = '';
+                            group.classList.add('collapsed');
+                            if (badge) badge.textContent = badge.dataset.total;
+                            return;
+                        }
+
+                        var type = typeof _GTYPE !== 'undefined' ? _GTYPE : 'channel';
+                        var matchCount = 0;
+
+                        if (type === 'series') {
+                            // Search series names
+                            var seriesObj = data;
+                            matchCount = Object.keys(seriesObj).filter(function(sn) {
+                                return sn.toLowerCase().includes(q);
+                            }).length;
+                        } else {
+                            // Search channel names
+                            matchCount = data.filter(function(ch) {
+                                return (ch.n || '').toLowerCase().includes(q);
+                            }).length;
+                        }
+
+                        if (!gMatch && matchCount === 0) {
+                            group.style.display = 'none';
+                            return;
+                        }
+
+                        group.style.display = '';
+                        group.classList.remove('collapsed');
+                        _renderGroup(group);
+
+                        // Filter rendered rows (table-based) or series entries
+                        var rows = group.querySelectorAll('tr[data-name]');
+                        var seriesEntries = group.querySelectorAll('.series-entry[data-name]');
+                        if (rows.length > 0) {
+                            var visible = 0;
+                            rows.forEach(function(row) {
+                                var match = gMatch || row.dataset.name.includes(q);
+                                row.style.display = match ? '' : 'none';
+                                if (match) visible++;
+                            });
+                            matchCount = visible;
+                        } else if (seriesEntries.length > 0) {
+                            var visible = 0;
+                            seriesEntries.forEach(function(entry) {
+                                var match = gMatch || entry.dataset.name.includes(q);
+                                entry.style.display = match ? '' : 'none';
+                                if (match) visible++;
+                            });
+                            matchCount = visible;
+                        }
+
+                        totalVisible += matchCount || (gMatch ? 1 : 0);
+                        if (badge) badge.textContent = matchCount || badge.dataset.total;
+
                     } else {
-                        // Series/other: match against group name
-                        const nameEl = group.querySelector('.group-name');
-                        groupVisible = (!q || (nameEl && nameEl.textContent.toLowerCase().includes(q))) ? 1 : 0;
-                    }
+                        // ── DOM-based search (standard pages) ────────────────
+                        var rows = group.querySelectorAll('tr[data-name]');
+                        var groupVisible = 0;
 
-                    totalVisible += groupVisible;
-                    group.style.display = (groupVisible === 0 && q) ? 'none' : '';
-                    if (q) group.classList.remove('collapsed');
-                    else if (!q) group.classList.add('collapsed');
+                        if (rows.length > 0) {
+                            rows.forEach(function(row) {
+                                var match = !q || row.dataset.name.includes(q);
+                                row.style.display = match ? '' : 'none';
+                                if (match) groupVisible++;
+                            });
+                        } else {
+                            var nameEl = group.querySelector('.group-name');
+                            groupVisible = (!q || (nameEl && nameEl.textContent.toLowerCase().includes(q))) ? 1 : 0;
+                        }
 
-                    const badge = group.querySelector('.group-count');
-                    if (badge) {
-                        badge.textContent = (q && rows.length > 0) ? groupVisible : badge.dataset.total;
+                        totalVisible += groupVisible;
+                        group.style.display = (groupVisible === 0 && q) ? 'none' : '';
+                        if (q) group.classList.remove('collapsed');
+                        else group.classList.add('collapsed');
+                        if (badge) badge.textContent = (q && rows.length > 0) ? groupVisible : badge.dataset.total;
                     }
                 });
 
-                const rc = document.getElementById('resultCount');
+                var rc = document.getElementById('resultCount');
                 if (rc) rc.textContent = q ? (totalVisible.toLocaleString() + ' results') : '';
             }, 150);
         }
 
         function clearSearch() {
-            const inp = document.getElementById('contentSearch');
+            var inp = document.getElementById('contentSearch');
             if (inp) inp.value = '';
             filterContent('');
         }
 
         function jumpToGroup(groupId) {
             if (!groupId) return;
-            const el = document.getElementById(groupId);
+            var el = document.getElementById(groupId);
             if (!el) return;
+            _renderGroup(el);
             el.classList.remove('collapsed');
             el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            const sel = document.getElementById('groupJump');
+            var sel = document.getElementById('groupJump');
             if (sel) sel.value = '';
         }
     """
@@ -1372,6 +1454,63 @@ def generate_paginated_html_files(output_dir, base_name, title, sorted_groups,
         files_created.append(path)
 
     return files_created
+
+
+def _safe_group_id(group_name):
+    return 'g-' + ''.join(c if c.isalnum() or c == '-' else '-' for c in group_name.lower())[:60]
+
+
+def generate_lazy_content(groups_dict, is_movie=False, is_series=False):
+    """
+    Generate page content that stores all channel data as compact JSON.
+    Only group header shells are in the DOM initially. Content is rendered
+    client-side on expand or search — no pagination needed, full search works.
+    """
+    gdata = {}   # group_id -> channel list or series structure
+    shells = []
+
+    for group_name, channels in sorted(groups_dict.items()):
+        gid = _safe_group_id(group_name)
+
+        if is_series:
+            # Organise episodes by series name -> season -> episode list
+            from collections import defaultdict
+            organised = defaultdict(lambda: defaultdict(list))
+            for ch in channels:
+                raw = ch['name']
+                # parse S##E## pattern
+                import re as _re
+                m = _re.search(r'[Ss](\d+)[Ee](\d+)', raw)
+                season = int(m.group(1)) if m else 1
+                episode = int(m.group(2)) if m else 0
+                series_name = _re.sub(r'\s*[Ss]\d+[Ee]\d+.*', '', raw).strip() or raw
+                organised[series_name][str(season)].append({
+                    'ep': episode,
+                    'n': raw,
+                    'u': ch.get('url', ''),
+                })
+            # Convert defaultdicts to plain dicts for JSON
+            gdata[gid] = {sn: dict(seasons) for sn, seasons in organised.items()}
+        else:
+            gdata[gid] = [
+                {'n': ch['name'], 'u': ch.get('url', ''), 'l': ch.get('logo', '')}
+                for ch in sorted(channels, key=lambda x: x['name'])
+            ]
+
+        shells.append(f'''
+            <div class="group collapsed" id="{gid}">
+                <div class="group-header">
+                    <span class="chevron">&#9660;</span>
+                    <span class="group-name">{group_name}</span>
+                    <span class="group-count" data-total="{len(channels)}">{len(channels)}</span>
+                </div>
+                <div class="group-body"></div>
+            </div>''')
+
+    data_type = 'series' if is_series else ('movie' if is_movie else 'channel')
+    gdata_json = json.dumps(gdata, ensure_ascii=False, separators=(',', ':'))
+
+    return f'<script>var _GDATA={gdata_json};var _GTYPE="{data_type}";</script>\n' + '\n'.join(shells)
 
 
 def generate_split_html_reports(groups, no_tvg_id_groups, matched_groups, output_dir):
@@ -1936,26 +2075,20 @@ def generate_split_html_reports(groups, no_tvg_id_groups, matched_groups, output
         m3u_editor_command=m3u_editor_command
     )
     
-    # Generate movies (paginated)
-    generate_paginated_html_files(
-        output_dir, 'content_analysis_movies.html', 'Movies without TVG-ID',
-        sorted(movies_groups.items()), shared_header, css_styles,
-        include_epg=False, is_movie=True
-    )
+    # Generate movies (lazy-rendered — all data in JS, DOM built on demand)
+    movies_content = generate_lazy_content(movies_groups, is_movie=True)
+    with open(os.path.join(output_dir, 'content_analysis_movies.html'), 'w', encoding='utf-8') as f:
+        f.write(generate_html_page('Movies without TVG-ID', movies_content, shared_header, css_styles))
 
-    # Generate series (paginated by group)
-    generate_paginated_html_files(
-        output_dir, 'content_analysis_series.html', 'Series without TVG-ID',
-        sorted(series_groups.items()), shared_header, css_styles,
-        include_epg=False, is_series=True
-    )
+    # Generate series (lazy-rendered)
+    series_content = generate_lazy_content(series_groups, is_series=True)
+    with open(os.path.join(output_dir, 'content_analysis_series.html'), 'w', encoding='utf-8') as f:
+        f.write(generate_html_page('Series without TVG-ID', series_content, shared_header, css_styles))
 
-    # Generate other no-TVG-ID content (paginated)
-    generate_paginated_html_files(
-        output_dir, 'content_analysis_unmatched_no_tvg.html', 'Other Content without TVG-ID',
-        sorted(unmatched_no_tvg.items()), shared_header, css_styles,
-        include_epg=False
-    )
+    # Generate other no-TVG-ID content (lazy-rendered)
+    notvg_content = generate_lazy_content(unmatched_no_tvg, is_movie=False)
+    with open(os.path.join(output_dir, 'content_analysis_unmatched_no_tvg.html'), 'w', encoding='utf-8') as f:
+        f.write(generate_html_page('Other Content without TVG-ID', notvg_content, shared_header, css_styles))
 
     # Create an index page that redirects to the matched content
     index_file = os.path.join(output_dir, 'index.html')
