@@ -2,6 +2,7 @@
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
+import secrets
 
 db = SQLAlchemy()
 
@@ -11,6 +12,7 @@ class User(db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(256), nullable=False)
+    stream_token = db.Column(db.String(32), unique=True, nullable=False, default=lambda: secrets.token_hex(16))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     playlists = db.relationship('Playlist', backref='user', lazy=True, cascade='all, delete-orphan')
 
