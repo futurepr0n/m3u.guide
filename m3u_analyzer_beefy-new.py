@@ -1308,6 +1308,72 @@ def generate_html_page(title, content, shared_header, css_styles, scripts="", m3
     </html>
     """
 
+LARGE_PAGE_CHANNEL_LIMIT = 1500   # max channels per page for movies / no_tvg
+LARGE_PAGE_GROUP_LIMIT   = 50     # max groups per page for series
+
+
+def _pagination_nav(page, total_pages, total_items, page_items, prev_url, next_url):
+    prev_btn = f'<a href="{prev_url}" class="pag-btn">\u2190 Prev</a>' if prev_url else '<span class="pag-btn pag-disabled">\u2190 Prev</span>'
+    next_btn = f'<a href="{next_url}" class="pag-btn">Next \u2192</a>' if next_url else '<span class="pag-btn pag-disabled">Next \u2192</span>'
+    return f"""
+    <div class="pagination-nav">
+        {prev_btn}
+        <span class="pag-info">Page {page} of {total_pages} &nbsp;&middot;&nbsp; {page_items:,} items (of {total_items:,} total) &nbsp;&middot;&nbsp; <em style="opacity:.6">search filters this page only</em></span>
+        {next_btn}
+    </div>"""
+
+
+def _page_filename(stem, n):
+    return f'{stem}.html' if n == 1 else f'{stem}_p{n}.html'
+
+
+def generate_paginated_html_files(output_dir, base_name, title, sorted_groups,
+                                   shared_header, css_styles,
+                                   include_epg=False, is_movie=False, is_series=False):
+    """Generate one or more size-bounded HTML files for large content sets."""
+    max_per_page = LARGE_PAGE_GROUP_LIMIT if is_series else LARGE_PAGE_CHANNEL_LIMIT
+
+    # Build pages — keep groups intact, accumulate until limit
+    pages, current, current_size = [], [], 0
+    for group_name, channels in sorted_groups:
+        item_count = 1 if is_series else len(channels)
+        if current_size + item_count > max_per_page and current:
+            pages.append(current)
+            current, current_size = [], 0
+        current.append((group_name, channels))
+        current_size += item_count
+    if current:
+        pages.append(current)
+
+    stem = base_name.replace('.html', '')
+    total_pages = len(pages)
+    total_items = sum(len(ch) for page in pages for _, ch in page)
+    files_created = []
+
+    for i, page_groups in enumerate(pages, 1):
+        page_items = sum(len(ch) for _, ch in page_groups)
+        prev_url = _page_filename(stem, i - 1) if i > 1 else None
+        next_url = _page_filename(stem, i + 1) if i < total_pages else None
+        out_file = _page_filename(stem, i)
+
+        nav = _pagination_nav(i, total_pages, total_items, page_items, prev_url, next_url) if total_pages > 1 else ''
+        content = [nav]
+        for group_name, channels in page_groups:
+            content.append(generate_group_content(group_name, channels,
+                                                   include_epg=include_epg,
+                                                   is_movie=is_movie,
+                                                   is_series=is_series))
+        content.append(nav)
+
+        page_title = f'{title} — Page {i} of {total_pages}' if total_pages > 1 else title
+        path = os.path.join(output_dir, out_file)
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(generate_html_page(page_title, ''.join(content), shared_header, css_styles))
+        files_created.append(path)
+
+    return files_created
+
+
 def generate_split_html_reports(groups, no_tvg_id_groups, matched_groups, output_dir):
     """Generate separate HTML reports for each section"""
     # Calculate statistics
@@ -1607,6 +1673,21 @@ def generate_split_html_reports(groups, no_tvg_id_groups, matched_groups, output
         .download-btn:hover { background: #00d4ff; color: #003642; }
         .watch-btn { background: rgba(60,215,255,0.15); color: #3cd7ff; }
         .watch-btn:hover { background: #00d4ff; color: #003642; }
+        .pagination-nav {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0.75rem 1rem; margin: 0.5rem 0 1rem;
+            background: #1c1b1b; border-radius: 0.625rem;
+            font-family: 'Inter', sans-serif; font-size: 0.75rem;
+        }
+        .pag-btn {
+            padding: 0.3rem 0.85rem; border-radius: 9999px;
+            background: #353534; color: rgba(255,255,255,0.7);
+            text-decoration: none; font-size: 0.7rem; font-weight: 500;
+            text-transform: uppercase; letter-spacing: 0.05em; transition: all 0.15s;
+        }
+        .pag-btn:hover { background: #00d4ff; color: #003642; text-decoration: none; }
+        .pag-disabled { opacity: 0.3; cursor: default; }
+        .pag-info { color: rgba(255,255,255,0.4); font-size: 0.7rem; text-align: center; flex: 1; padding: 0 1rem; }
     """
 
     # Define JavaScript scripts
@@ -1855,49 +1936,26 @@ def generate_split_html_reports(groups, no_tvg_id_groups, matched_groups, output
         m3u_editor_command=m3u_editor_command
     )
     
-    # Generate content for movies
-    movies_file = os.path.join(output_dir, 'content_analysis_movies.html')
-    movies_content = []
-    for group_name, channels in sorted(movies_groups.items()):
-        movies_content.append(generate_group_content(group_name, channels, include_epg=False, is_movie=True))
-    
-    with open(movies_file, 'w', encoding='utf-8') as f:
-        f.write(generate_html_page(
-            "Movies without TVG-ID",
-            ''.join(movies_content),
-            shared_header,
-            css_styles
-        ))
-    
-    # Generate content for series
-    series_file = os.path.join(output_dir, 'content_analysis_series.html')
-    series_content = []
-    for group_name, channels in sorted(series_groups.items()):
-        # Changed this line to include is_series=True
-        series_content.append(generate_group_content(group_name, channels, include_epg=False, is_series=True))
+    # Generate movies (paginated)
+    generate_paginated_html_files(
+        output_dir, 'content_analysis_movies.html', 'Movies without TVG-ID',
+        sorted(movies_groups.items()), shared_header, css_styles,
+        include_epg=False, is_movie=True
+    )
 
-    with open(series_file, 'w', encoding='utf-8') as f:
-        f.write(generate_html_page(
-            "Series without TVG-ID",
-            ''.join(series_content),
-            shared_header,
-            css_styles
-        ))
-    print(f"- {series_file}")
-        
-    # Generate content for unmatched no TVG-ID content
-    unmatched_no_tvg_file = os.path.join(output_dir, 'content_analysis_unmatched_no_tvg.html')
-    unmatched_content = []
-    for group_name, channels in sorted(unmatched_no_tvg.items()):
-        unmatched_content.append(generate_group_content(group_name, channels, include_epg=False, is_movie=False))
-    
-    with open(unmatched_no_tvg_file, 'w', encoding='utf-8') as f:
-        f.write(generate_html_page(
-            "Other Content without TVG-ID",
-            ''.join(unmatched_content),
-            shared_header,
-            css_styles
-        ))
+    # Generate series (paginated by group)
+    generate_paginated_html_files(
+        output_dir, 'content_analysis_series.html', 'Series without TVG-ID',
+        sorted(series_groups.items()), shared_header, css_styles,
+        include_epg=False, is_series=True
+    )
+
+    # Generate other no-TVG-ID content (paginated)
+    generate_paginated_html_files(
+        output_dir, 'content_analysis_unmatched_no_tvg.html', 'Other Content without TVG-ID',
+        sorted(unmatched_no_tvg.items()), shared_header, css_styles,
+        include_epg=False
+    )
 
     # Create an index page that redirects to the matched content
     index_file = os.path.join(output_dir, 'index.html')
