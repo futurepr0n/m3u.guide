@@ -141,6 +141,19 @@ app.config.update(
 Session(app)
 init_db(app)
 
+# Ensure stream_token column exists and backfill any users missing one
+with app.app_context():
+    from sqlalchemy import text
+    try:
+        db.session.execute(text('ALTER TABLE user ADD COLUMN stream_token VARCHAR(32)'))
+        db.session.commit()
+    except Exception:
+        pass  # Column already exists
+    for u in User.query.all():
+        if not u.stream_token:
+            u.stream_token = secrets.token_hex(16)
+    db.session.commit()
+
 # Register blueprints
 app.register_blueprint(auth, url_prefix='/auth')
 
@@ -174,10 +187,17 @@ def get_playlists():
     if 'user_id' not in session:
         return jsonify({'error': 'User not logged in'}), 403
     
-    playlists = playlist_manager.get_user_playlists(session['user_id'])
-    return jsonify({
-        'user_id': session['user_id'],
-        'playlists': [{
+    from models import User
+    uid = session['user_id']
+    user = User.query.get(uid)
+    playlists = playlist_manager.get_user_playlists(uid)
+    token = user.stream_token
+    playlist_list = []
+    for p in playlists:
+        safe_name = secure_filename(p.name)
+        base_path = os.path.join(app.static_folder, 'playlists', str(uid), safe_name)
+        stream_prefix = f'/stream/{token}/{safe_name}'
+        playlist_list.append({
             'name': p.name,
             'source': p.source,
             'total_channels': p.total_channels,
@@ -185,18 +205,17 @@ def get_playlists():
             'total_movies': p.total_movies,
             'total_series': p.total_series,
             'total_unmatched': p.total_unmatched,
-            'm3u_editor_command': p.m3u_editor_command,  
+            'm3u_editor_command': p.m3u_editor_command,
             'last_sync': p.last_sync.isoformat() if p.last_sync else None,
             'auto_sync': p.auto_sync,
-            'has_analysis': os.path.exists(os.path.join(
-                app.static_folder,
-                'playlists',
-                str(session['user_id']),
-                secure_filename(p.name),
-                'analysis',
-                'content_analysis_matched.html'
-            ))
-        } for p in playlists]
+            'has_analysis': os.path.exists(os.path.join(base_path, 'analysis', 'content_analysis_matched.html')),
+            'm3u_url': f'{stream_prefix}/tv.m3u',
+            'epg_url': f'{stream_prefix}/epg.xml' if os.path.exists(os.path.join(base_path, 'epg.xml')) else None,
+            'edited_m3u_url': f'{stream_prefix}/tv_edited.m3u' if os.path.exists(os.path.join(base_path, 'tv_edited.m3u')) else None,
+        })
+    return jsonify({
+        'user_id': uid,
+        'playlists': playlist_list
     })
 
 def _bg_process_playlist(app_ctx, job_id, user_id, name, source, form_data, files_data, host_url):
@@ -924,9 +943,33 @@ def serve_playlist_file(user_id, playlist_name, filename):
         app.logger.error(f"Error serving file: {str(e)}")
         return jsonify({'error': str(e)}), 500
     
+@app.route('/stream/<string:token>/<path:playlist_name>/<string:filetype>')
+def stream_playlist_file(token, playlist_name, filetype):
+    """Public no-auth route for media players. Token identifies the user."""
+    if filetype not in ['tv.m3u', 'epg.xml', 'tv_edited.m3u']:
+        return jsonify({'error': 'Invalid file type'}), 400
+
+    from models import User
+    user = User.query.filter_by(stream_token=token).first()
+    if not user:
+        return jsonify({'error': 'Not found'}), 404
+
+    try:
+        relative_path = f'playlists/{user.id}/{secure_filename(playlist_name)}/{filetype}'
+        file_path = os.path.join(app.static_folder, relative_path)
+        if not os.path.exists(file_path):
+            return jsonify({'error': 'File not found'}), 404
+        response = send_from_directory(app.static_folder, relative_path)
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        return response
+    except Exception as e:
+        app.logger.error(f"Error serving stream file: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/static/playlists/<int:user_id>/<path:playlist_name>/<string:filetype>')
 def serve_m3u_epg_file(user_id, playlist_name, filetype):
-    if filetype not in ['tv.m3u', 'epg.xml']:
+    if filetype not in ['tv.m3u', 'epg.xml', 'tv_edited.m3u']:
         return jsonify({'error': 'Invalid file type'}), 400
 
     try:

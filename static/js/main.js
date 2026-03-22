@@ -25,6 +25,10 @@ function loadPlaylists() {
             response.playlists.forEach(function (playlist) {
                 const hasAnalysis = playlist.has_analysis;
                 const encodedCmd  = playlist.m3u_editor_command ? encodeURIComponent(playlist.m3u_editor_command) : '';
+                const origin = window.location.origin;
+                const m3uUrl  = playlist.m3u_url  ? origin + playlist.m3u_url  : null;
+                const epgUrl  = playlist.epg_url  ? origin + playlist.epg_url  : null;
+                const editUrl = playlist.edited_m3u_url ? origin + playlist.edited_m3u_url : null;
 
                 const adminBtn = window.location.search.includes('admin=true') ? `
                     <button class="btn original-analysis-btn action-chip"
@@ -84,6 +88,11 @@ function loadPlaylists() {
                                     data-command="${encodedCmd}">Optimize</button>
                             <button class="btn delete-btn action-chip action-chip-danger" onclick="deletePlaylist('${playlist.name}')">Delete</button>
                         </div>
+                        <div style="display:flex; flex-wrap:wrap; gap:0.4rem; padding-top:0.5rem; border-top:1px solid rgba(255,255,255,0.06); margin-top:0.5rem;">
+                            ${m3uUrl ? `<button class="btn action-chip" style="background:rgba(0,212,255,0.1);color:#a8e8ff;" onclick="copyPlaylistUrl(this,'${m3uUrl}')">M3U</button>` : ''}
+                            ${epgUrl ? `<button class="btn action-chip" style="background:rgba(0,212,255,0.1);color:#a8e8ff;" onclick="copyPlaylistUrl(this,'${epgUrl}')">EPG</button>` : ''}
+                            ${editUrl ? `<button class="btn action-chip" style="background:rgba(168,232,255,0.1);color:#a8e8ff;" onclick="copyPlaylistUrl(this,'${editUrl}')">M3U-Edit</button>` : ''}
+                        </div>
                     </div>
                 `;
                 grid.append(card);
@@ -97,6 +106,26 @@ function loadPlaylists() {
                 </div>
             `);
         });
+}
+
+function copyPlaylistUrl(btn, url) {
+    const copy = async () => {
+        if (navigator.clipboard && window.isSecureContext) {
+            try { await navigator.clipboard.writeText(url); return true; } catch(e) {}
+        }
+        const ta = document.createElement('textarea');
+        ta.value = url; ta.style.position = 'fixed'; ta.style.left = '-9999px';
+        document.body.appendChild(ta); ta.focus(); ta.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        return ok;
+    };
+    copy().then(ok => {
+        const orig = btn.textContent;
+        btn.textContent = ok ? 'Copied!' : 'Failed';
+        btn.disabled = true;
+        setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2000);
+    });
 }
 
 function nextStep() {

@@ -1845,29 +1845,15 @@ def generate_split_html_reports(groups, no_tvg_id_groups, matched_groups, output
     total_series = sum(len(channels) for channels in series_groups.values())
     total_unmatched = sum(len(channels) for channels in unmatched_no_tvg.values())
     
-    # Update shared header to include new statistics
-    shared_header = f"""
-        <div class="header">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h1>M3U Content Analysis Report</h1>
-                <a href="/" class="back-btn">Back to Playlists</a>
-            </div>
-            <div class="timestamp">Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</div>
-            <p>Total Channels with TVG-ID: {total_channels}</p>
-            <p>Channels with EPG Matches: {total_epg_matches}</p>
-            <p>Movies without TVG-ID: {total_movies}</p>
-            <p>Series without TVG-ID: {total_series}</p>
-            <p>Unmatched Content without TVG-ID: {total_unmatched}</p>
-        </div>
-
-        <div class="nav-tabs">
-            <a href="content_analysis_matched.html" class="tab">With EPG ({total_epg_matches})</a>
-            <a href="content_analysis_unmatched.html" class="tab">No EPG ({total_channels - total_epg_matches})</a>
-            <a href="content_analysis_movies.html" class="tab">Movies ({total_movies})</a>
-            <a href="content_analysis_series.html" class="tab">Series ({total_series})</a>
-            <a href="content_analysis_unmatched_no_tvg.html" class="tab">Other ({total_unmatched})</a>
-        </div>
-    """
+    # Update shared header to include new statistics (reuse styled header with search)
+    shared_header = generate_shared_header(
+        total_channels=total_channels,
+        total_epg_matches=total_epg_matches,
+        total_movies=total_movies,
+        total_series=total_series,
+        total_unmatched=total_unmatched,
+        m3u_editor_command=m3u_editor_command
+    )
     
     # Generate content for movies
     movies_file = os.path.join(output_dir, 'content_analysis_movies.html')
