@@ -1034,8 +1034,8 @@ def generate_html_page(title, content, shared_header, css_styles, scripts="", m3
             var gid = group.id;
             var body = group.querySelector('.group-body');
             if (!body || body.dataset.rendered) return;
-            body.dataset.rendered = '1';
             if (typeof _GDATA === 'undefined' || !_GDATA[gid]) return;
+            body.dataset.rendered = '1';
 
             var data = _GDATA[gid];
             var type = typeof _GTYPE !== 'undefined' ? _GTYPE : 'channel';
@@ -1119,7 +1119,7 @@ def generate_html_page(title, content, shared_header, css_styles, scripts="", m3
                 h.addEventListener('click', function(e) {
                     if (e.target.closest('a,button')) return;
                     var group = this.closest('.group');
-                    _renderGroup(group);
+                    try { _renderGroup(group); } catch(err) {}
                     group.classList.toggle('collapsed');
                 });
             });
@@ -1189,7 +1189,7 @@ def generate_html_page(title, content, shared_header, css_styles, scripts="", m3
 
                         group.style.display = '';
                         group.classList.remove('collapsed');
-                        _renderGroup(group);
+                        try { _renderGroup(group); } catch(err) {}
 
                         // Filter rendered rows (table-based) or series entries
                         var rows = group.querySelectorAll('tr[data-name]');
@@ -1254,7 +1254,7 @@ def generate_html_page(title, content, shared_header, css_styles, scripts="", m3
             if (!groupId) return;
             var el = document.getElementById(groupId);
             if (!el) return;
-            _renderGroup(el);
+            try { _renderGroup(el); } catch(err) {}
             el.classList.remove('collapsed');
             el.scrollIntoView({ behavior: 'smooth', block: 'start' });
             var sel = document.getElementById('groupJump');
