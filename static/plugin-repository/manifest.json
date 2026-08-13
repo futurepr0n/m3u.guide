@@ -6,7 +6,16 @@
     "overview": "Connect Jellyfin to m3u.guide, Xtream, direct URLs, or server-local playlists.",
     "owner": "m3u.guide",
     "category": "Live TV",
+    "imageUrl": "http://127.0.0.1:4444/static/plugin-repository/m3u-logo.jpg",
     "versions": [
+      {
+        "version": "0.13.0.0",
+        "changelog": "Resilient Live TV programme categorization for channels without provider EPG identifiers; deterministic fallback tvg-id support through m3u.guide exports; categorized placeholder programmes when real listings are unavailable; and automatic cleanup of stale plugin-owned tuner/listing registrations after source changes.",
+        "targetAbi": "10.11.3.0",
+        "sourceUrl": "http://127.0.0.1:4444/static/plugin-repository/Jellyfin.Plugin.M3uGuide_0.13.0.0.zip",
+        "checksum": "3217F4569D0E6A5994857F5F7E33F147",
+        "timestamp": "2026-08-13T04:30:00Z"
+      },
       {
         "version": "0.12.0.0",
         "changelog": "Credential-first Xtream Connect and Discover workflow; failed connections preserve the active source; independent Live, Movie and Series discovery; searchable paged movie/show title selection by stable provider ID; Legacy get.php discovery; and restored read-only hosted playlist source, mirror, active-origin and User-Agent details.",

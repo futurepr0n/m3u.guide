@@ -105,6 +105,8 @@ App available at `http://localhost:4444`
 `startup_app.sh` handles:
 - Creates Python venv if not present
 - Installs `requirements.txt`
+- Validates every advertised Jellyfin plugin ZIP, checksum, metadata version,
+  and catalog image before starting
 - Auto-generates `FLASK_SECRET_KEY` → `.env` on first run
 - Loads `M3UGUIDE_CREDENTIAL_KEY` from the environment, or generates it once
   at `.secrets/m3uguide_credential.key` with owner-only permissions
@@ -162,6 +164,17 @@ URLs remain correct behind a reverse proxy. Add the manifest URL in Jellyfin at
 **Dashboard → Plugins → Repositories**, run **Update Plugins**, and install
 `m3u.guide` from the catalog. The manifest is intentionally not cached; versioned
 ZIP packages are immutable and may be cached for one year.
+
+Deployment preflight can also be run independently:
+
+```bash
+python3 validate_plugin_repository.py
+```
+
+It exits nonzero if a manifest release cannot be installed safely. Commit the
+manifest, every referenced ZIP, and `m3u-logo.jpg` together as one release.
+The application performs the same validation during import, including when the
+Docker image starts `app.py` without invoking `startup_app.sh`.
 
 ---
 

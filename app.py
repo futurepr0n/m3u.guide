@@ -31,6 +31,7 @@ from provider_health import probe_xtream_provider
 from credential_crypto import decrypt_password, store_password
 from security_controls import rate_limit, redact_data, redact_secrets
 from plugin_repository import PACKAGE_NAME, build_manifest
+from validate_plugin_repository import validate as validate_plugin_repository
 
 # Setup DNS for the whole app
 editor.setup_custom_dns()
@@ -65,6 +66,13 @@ SESSION_DIR = BASE_DIR / 'data' / 'sessions'
 # Ensure directories exist
 for directory in [STATIC_DIR, TEMPLATES_DIR, LOG_DIR, SESSION_DIR]:
     directory.mkdir(exist_ok=True, parents=True)
+
+_plugin_repository_errors = validate_plugin_repository(PLUGIN_REPOSITORY_DIR)
+if _plugin_repository_errors:
+    raise RuntimeError(
+        'Jellyfin plugin repository validation failed: '
+        + '; '.join(_plugin_repository_errors)
+    )
 
 class PlaylistManager:
     def __init__(self, base_dir):
@@ -2085,7 +2093,7 @@ def jellyfin_plugin_repository_manifest():
 @app.route('/api/jellyfin/plugin-repository/packages/<string:filename>')
 def jellyfin_plugin_repository_package(filename):
     """Serve one immutable, explicitly versioned plugin package."""
-    if not PACKAGE_NAME.fullmatch(filename):
+    if filename != 'm3u-logo.jpg' and not PACKAGE_NAME.fullmatch(filename):
         return jsonify({'error': 'Plugin package not found'}), 404
     response = send_from_directory(PLUGIN_REPOSITORY_DIR, filename, as_attachment=True)
     response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'

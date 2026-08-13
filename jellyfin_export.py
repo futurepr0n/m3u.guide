@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 from pathlib import Path
@@ -21,6 +21,7 @@ from provider_mirrors import rewrite_provider_url
 _ATTRIBUTE_RE = re.compile(r'([A-Za-z0-9_-]+)="([^"]*)"')
 _TVG_CHNO_RE = re.compile(r'\s+tvg-chno="[^"]*"', re.IGNORECASE)
 _M3UGUIDE_ID_RE = re.compile(r'\s+x-m3uguide-id="[^"]*"', re.IGNORECASE)
+_TVG_ID_RE = re.compile(r'\s+tvg-id="[^"]*"', re.IGNORECASE)
 
 _CATEGORY_KEYWORDS = {
     "Movie": ("movie", "movies", "cinema", "film"),
@@ -79,16 +80,17 @@ def iter_m3u(path: Path) -> Iterator[M3uEntry]:
                 pending = None
 
 
-def _jellyfin_extinf(entry: M3uEntry, channel_number: int) -> str:
+def _jellyfin_extinf(entry: M3uEntry, channel_number: int, tvg_id: str) -> str:
     """Add Jellyfin ordering and a provisional stable source identifier."""
     line = _TVG_CHNO_RE.sub("", entry.extinf)
     line = _M3UGUIDE_ID_RE.sub("", line)
+    line = _TVG_ID_RE.sub("", line)
     source_id = hashlib.sha256(entry.url.encode("utf-8")).hexdigest()[:24]
     comma = line.rfind(",")
     if comma < 0:
         raise ValueError("EXTINF line has no display-name separator")
     return (
-        f'{line[:comma]} tvg-chno="{channel_number}" '
+        f'{line[:comma]} tvg-id="{tvg_id}" tvg-chno="{channel_number}" '
         f'x-m3uguide-id="{source_id}"{line[comma:]}'
     )
 
@@ -130,10 +132,11 @@ def _write_live_m3u(
     group_prefixes: tuple[str, ...],
     stream_base: str | None = None,
     active_mirror: str | None = None,
-) -> tuple[dict, dict[str, str], dict[str, set[str]]]:
+) -> tuple[dict, dict[str, str], dict[str, set[str]], dict[str, str]]:
     counts = Counter()
     epg_ids: dict[str, str] = {}
     epg_categories: dict[str, set[str]] = {}
+    epg_names: dict[str, str] = {}
     groups = set()
     with destination.open("w", encoding="utf-8", newline="\n") as output:
         output.write("#EXTM3U\n")
@@ -148,28 +151,30 @@ def _write_live_m3u(
                 continue
 
             counts["exported_live"] += 1
+            source_id = hashlib.sha256(entry.url.encode("utf-8")).hexdigest()[:24]
             tvg_id = entry.attributes.get("tvg-id", "").strip()
-            if tvg_id:
-                folded_id = tvg_id.casefold()
-                epg_ids.setdefault(folded_id, tvg_id)
-                epg_categories.setdefault(folded_id, set()).update(
-                    _group_categories(entry.attributes.get("group-title", ""))
-                )
-            else:
+            if not tvg_id:
                 counts["live_without_tvg_id"] += 1
+                tvg_id = f"m3uguide.{source_id}"
+                counts["fallback_tvg_ids_added"] += 1
+            folded_id = tvg_id.casefold()
+            epg_ids.setdefault(folded_id, tvg_id)
+            epg_categories.setdefault(folded_id, set()).update(_group_categories(group))
+            display_name = entry.extinf.rsplit(",", 1)[-1].strip()
+            epg_names.setdefault(folded_id, display_name or tvg_id)
             if group:
                 groups.add(group)
             else:
                 counts["live_without_group"] += 1
 
-            output.write(_jellyfin_extinf(entry, counts["exported_live"]))
+            output.write(_jellyfin_extinf(entry, counts["exported_live"], tvg_id))
             output.write("\n")
             output.write(_jellyfin_stream_url(rewrite_provider_url(entry.url, stream_base, active_mirror)))
             output.write("\n")
 
     counts["exported_groups"] = len(groups)
     counts["unique_epg_ids"] = len(epg_ids)
-    return dict(counts), epg_ids, epg_categories
+    return dict(counts), epg_ids, epg_categories, epg_names
 
 
 def _write_trimmed_xmltv(
@@ -177,6 +182,7 @@ def _write_trimmed_xmltv(
     destination: Path,
     epg_ids: dict[str, str],
     epg_categories: dict[str, set[str]],
+    epg_names: dict[str, str],
 ) -> dict:
     counts = Counter()
     written_channels: set[str] = set()
@@ -230,11 +236,41 @@ def _write_trimmed_xmltv(
                     while element.getprevious() is not None:
                         del parent[0]
 
+            # Jellyfin cannot categorize an M3U channel without an XMLTV
+            # programme. Preserve real listings above and synthesize only the
+            # selected channels for which the provider supplied none.
+            provider_channel_ids = set(written_channels)
+            provider_programme_ids = set(programme_ids)
+            missing_channels = set(epg_ids) - written_channels
+            for folded in sorted(missing_channels):
+                channel = etree.Element("channel", id=epg_ids[folded])
+                etree.SubElement(channel, "display-name").text = epg_names[folded]
+                output.write(channel)
+                written_channels.add(folded)
+                counts["synthetic_channels"] += 1
+
+            start = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+            stop = start + timedelta(days=1)
+            for folded in sorted(set(epg_ids) - programme_ids):
+                programme = etree.Element(
+                    "programme",
+                    channel=epg_ids[folded],
+                    start=start.strftime("%Y%m%d%H%M%S +0000"),
+                    stop=stop.strftime("%Y%m%d%H%M%S +0000"),
+                )
+                etree.SubElement(programme, "title").text = epg_names[folded]
+                etree.SubElement(programme, "desc").text = "Live channel"
+                for category in sorted(epg_categories.get(folded, set())):
+                    etree.SubElement(programme, "category").text = category
+                output.write(programme)
+                programme_ids.add(folded)
+                counts["synthetic_programmes"] += 1
+
     counts["requested_channel_ids"] = len(epg_ids)
-    counts["matched_channel_ids"] = len(written_channels)
+    counts["matched_channel_ids"] = len(provider_channel_ids)
     counts["channel_ids_with_programmes"] = len(programme_ids)
-    counts["channel_ids_missing_from_xmltv"] = len(set(epg_ids) - written_channels)
-    counts["channel_ids_without_programmes"] = len(set(epg_ids) - programme_ids)
+    counts["channel_ids_missing_from_xmltv"] = len(set(epg_ids) - provider_channel_ids)
+    counts["channel_ids_without_programmes"] = len(set(epg_ids) - provider_programme_ids)
     return dict(counts)
 
 
@@ -277,11 +313,11 @@ def generate_jellyfin_export(
     try:
         live_path = staging / "live.m3u8"
         epg_path = staging / "epg.xml"
-        m3u_counts, epg_ids, epg_categories = _write_live_m3u(
+        m3u_counts, epg_ids, epg_categories, epg_names = _write_live_m3u(
             m3u_source, live_path, group_prefixes, stream_base, active_mirror
         )
         xml_counts = _write_trimmed_xmltv(
-            xml_source, epg_path, epg_ids, epg_categories
+            xml_source, epg_path, epg_ids, epg_categories, epg_names
         )
 
         warnings = []

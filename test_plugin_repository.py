@@ -21,6 +21,10 @@ class PluginRepositoryTests(unittest.TestCase):
             result[0]["versions"][0]["sourceUrl"],
             "https://m3u.example/api/jellyfin/plugin-repository/packages/Jellyfin.Plugin.M3uGuide_0.12.0.0.zip",
         )
+        self.assertEqual(
+            result[0]["imageUrl"],
+            "https://m3u.example/api/jellyfin/plugin-repository/packages/m3u-logo.jpg",
+        )
 
     def test_rejects_non_version_package_names(self):
         with self.assertRaises(ValueError):
@@ -29,4 +33,3 @@ class PluginRepositoryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

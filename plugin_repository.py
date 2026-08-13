@@ -29,8 +29,8 @@ def build_manifest(manifest_path: Path, public_base_url: str, package_route: str
     base = public_base_url.rstrip("/")
     route = package_route.strip("/")
     for plugin in result:
+        plugin["imageUrl"] = f"{base}/{route}/m3u-logo.jpg"
         for version in plugin.get("versions", []):
             filename = package_filename(str(version.get("version", "")))
             version["sourceUrl"] = f"{base}/{route}/{quote(filename)}"
     return result
-

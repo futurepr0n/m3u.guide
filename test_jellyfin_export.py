@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+import re
 import tempfile
 import unittest
 
@@ -35,6 +36,25 @@ http://m3u.futurepr0n.com/stream_proxy?url=http%3A//provider/live/u/p/4
 
 
 class JellyfinExportTests(unittest.TestCase):
+    def test_live_channels_without_epg_receive_stable_ids_and_categorized_programmes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "tv.m3u").write_text(
+                '#EXTM3U\n#EXTINF:-1 tvg-id="" group-title="US| SPORTS PPV",UFC Event\n'
+                'http://provider/live/user/pass/42.ts\n',
+                encoding="utf-8",
+            )
+            (root / "epg.xml").write_text('<?xml version="1.0"?><tv/>', encoding="utf-8")
+
+            generate_jellyfin_export(root)
+            live = (root / "exports/jellyfin/default/live.m3u8").read_text(encoding="utf-8")
+            tree = etree.parse(str(root / "exports/jellyfin/default/epg.xml"))
+
+            fallback_id = re.search(r'tvg-id="(m3uguide\.[0-9a-f]{24})"', live).group(1)
+            self.assertEqual(fallback_id, tree.xpath("string(/tv/channel/@id)"))
+            self.assertEqual(fallback_id, tree.xpath("string(/tv/programme/@channel)"))
+            self.assertIn("Sports", tree.xpath("/tv/programme/category/text()"))
+
     def test_generates_jellyfin_live_projection(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -54,12 +74,12 @@ class JellyfinExportTests(unittest.TestCase):
             )
 
             tree = etree.parse(str(output / "epg.xml"))
-            self.assertEqual(1, tree.xpath("count(/tv/channel)"))
-            self.assertEqual(1, tree.xpath("count(/tv/programme)"))
-            self.assertEqual("live.one", tree.xpath("string(/tv/channel/@id)"))
-            self.assertEqual("live.one", tree.xpath("string(/tv/programme/@channel)"))
+            self.assertEqual(2, tree.xpath("count(/tv/channel)"))
+            self.assertEqual(2, tree.xpath("count(/tv/programme)"))
+            self.assertEqual("live.one", tree.xpath("string(/tv/channel[@id='live.one']/@id)"))
+            self.assertEqual("live.one", tree.xpath("string(/tv/programme[@channel='live.one']/@channel)"))
             self.assertEqual(
-                ["News"], tree.xpath("/tv/programme/category/text()")
+                ["News"], tree.xpath("/tv/programme[@channel='live.one']/category/text()")
             )
 
             validation = json.loads((output / "validation.json").read_text())

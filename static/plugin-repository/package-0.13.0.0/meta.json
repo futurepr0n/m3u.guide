@@ -1,0 +1,16 @@
+{
+  "category": "Live TV",
+  "changelog": "Adds resilient Live TV programme categorization for channels without provider EPG identifiers and removes stale plugin-owned tuner/listing registrations after source changes.",
+  "description": "Synchronizes Live TV, XMLTV and VOD from m3u.guide or standalone playlist sources.",
+  "guid": "31ea5707-9f04-45c4-8aa3-52a6f9752ee5",
+  "name": "m3u.guide",
+  "overview": "Connect Jellyfin to m3u.guide, direct URLs, or server-local playlists.",
+  "owner": "m3u.guide",
+  "targetAbi": "10.11.3.0",
+  "timestamp": "2026-08-13T00:00:00Z",
+  "version": "0.13.0.0",
+  "status": "Active",
+  "autoUpdate": false,
+  "imagePath": "m3u-logo.jpg",
+  "assemblies": ["Jellyfin.Plugin.M3uGuide.dll"]
+}

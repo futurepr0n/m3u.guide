@@ -28,6 +28,11 @@ pip install --upgrade pip || handle_error "Failed to upgrade pip"
 echo "Installing requirements..."
 pip install -r requirements.txt || handle_error "Failed to install requirements"
 
+# Do not bring up a deployment that advertises missing or corrupt Jellyfin
+# packages. This also catches forgotten checksum updates after rebuilding a ZIP.
+python3 validate_plugin_repository.py \
+    || handle_error "Jellyfin plugin repository validation failed"
+
 # Provider credentials are encrypted with a stable Fernet key. Prefer a value
 # injected by the deployment secret manager. For a simple bare-metal install,
 # persist a generated key outside source control and reuse it on every start.
