@@ -30,6 +30,7 @@ from provider_mirrors import normalize_mirrors, normalize_origin, rewrite_provid
 from provider_health import probe_xtream_provider
 from credential_crypto import decrypt_password, store_password
 from security_controls import rate_limit, redact_data, redact_secrets
+from plugin_repository import PACKAGE_NAME, build_manifest
 
 # Setup DNS for the whole app
 editor.setup_custom_dns()
@@ -56,6 +57,7 @@ load_dotenv()
 # Configure base directories
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / 'static'
+PLUGIN_REPOSITORY_DIR = STATIC_DIR / 'plugin-repository'
 TEMPLATES_DIR = BASE_DIR / 'templates'
 LOG_DIR = BASE_DIR / 'logs'
 SESSION_DIR = BASE_DIR / 'data' / 'sessions'
@@ -2055,6 +2057,39 @@ def download_playlist(user_id, playlist_name):
     except Exception as e:
         app.logger.error(f"Error downloading playlist: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/jellyfin/plugin-repository/manifest.json')
+def jellyfin_plugin_repository_manifest():
+    """Publish the Jellyfin catalog with package URLs for this deployment."""
+    configured_url = os.getenv('M3UGUIDE_PUBLIC_URL', '').strip()
+    public_url = configured_url or request.url_root
+    if not public_url.lower().startswith(('http://', 'https://')):
+        return jsonify({'error': 'M3UGUIDE_PUBLIC_URL must be an HTTP(S) URL'}), 500
+
+    try:
+        manifest = build_manifest(
+            PLUGIN_REPOSITORY_DIR / 'manifest.json',
+            public_url,
+            '/api/jellyfin/plugin-repository/packages',
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        app.logger.error('Plugin repository manifest is invalid: %s', error)
+        return jsonify({'error': 'Plugin repository is unavailable'}), 503
+
+    response = jsonify(manifest)
+    response.headers['Cache-Control'] = 'no-cache, max-age=0'
+    return response
+
+
+@app.route('/api/jellyfin/plugin-repository/packages/<string:filename>')
+def jellyfin_plugin_repository_package(filename):
+    """Serve one immutable, explicitly versioned plugin package."""
+    if not PACKAGE_NAME.fullmatch(filename):
+        return jsonify({'error': 'Plugin package not found'}), 404
+    response = send_from_directory(PLUGIN_REPOSITORY_DIR, filename, as_attachment=True)
+    response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+    return response
 
 
 @app.errorhandler(404)
