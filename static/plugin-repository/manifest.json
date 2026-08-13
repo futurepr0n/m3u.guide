@@ -1,0 +1,108 @@
+[
+  {
+    "guid": "31ea5707-9f04-45c4-8aa3-52a6f9752ee5",
+    "name": "m3u.guide",
+    "description": "Synchronizes Live TV, XMLTV, Movies and Shows from hosted m3u.guide accounts or standalone playlist providers.",
+    "overview": "Connect Jellyfin to m3u.guide, Xtream, direct URLs, or server-local playlists.",
+    "owner": "m3u.guide",
+    "category": "Live TV",
+    "versions": [
+      {
+        "version": "0.12.0.0",
+        "changelog": "Credential-first Xtream Connect and Discover workflow; failed connections preserve the active source; independent Live, Movie and Series discovery; searchable paged movie/show title selection by stable provider ID; Legacy get.php discovery; and restored read-only hosted playlist source, mirror, active-origin and User-Agent details.",
+        "targetAbi": "10.11.3.0",
+        "sourceUrl": "http://127.0.0.1:4444/static/plugin-repository/Jellyfin.Plugin.M3uGuide_0.12.0.0.zip",
+        "checksum": "DC090480A273C0992AD2B99E7E7EE522",
+        "timestamp": "2026-08-13T03:15:00Z"
+      },
+      {
+        "version": "0.11.0.0",
+        "changelog": "Standalone Xtream API and Legacy sources; encrypted provider credentials; canonical-origin and ordered-mirror failover; Live/Movie/Series category selection; bounded series expansion; XMLTV trimming and group-category injection; and an opaque restart-safe local playback relay with Range and User-Agent forwarding.",
+        "targetAbi": "10.11.3.0",
+        "sourceUrl": "http://127.0.0.1:4444/static/plugin-repository/Jellyfin.Plugin.M3uGuide_0.11.0.0.zip",
+        "checksum": "6C3787DA0DBA67FBEF9F69761AFC38AC",
+        "timestamp": "2026-08-13T02:55:00Z"
+      },
+      {
+        "version": "0.10.0.0",
+        "changelog": "Direct M3U/XMLTV URL and server-local file source modes; shared local revision cache; local Live TV, movie and episode classification; generated STRM/NFO projections; and explicit source-mode dashboard controls.",
+        "targetAbi": "10.11.3.0",
+        "sourceUrl": "http://127.0.0.1:4444/static/plugin-repository/Jellyfin.Plugin.M3uGuide_0.10.0.0.zip",
+        "checksum": "508756DAC3488E39FFBC90C11B0AD4AF",
+        "timestamp": "2026-08-13T02:26:00Z"
+      },
+      {
+        "version": "0.9.0.0",
+        "changelog": "Hybrid playlist-source seam, behavior-compatible remote m3u.guide source, and source-independent synchronization/materialization pipeline.",
+        "targetAbi": "10.11.3.0",
+        "sourceUrl": "http://127.0.0.1:4444/static/plugin-repository/Jellyfin.Plugin.M3uGuide_0.9.0.0.zip",
+        "checksum": "D09E0A5206C51158C5725F63814759E0",
+        "timestamp": "2026-08-13T00:00:00Z"
+      },
+      {
+        "version": "0.8.0.0",
+        "changelog": "Integration-token inventory, last-use visibility, targeted revocation, safe current-token rotation, and dashboard device controls.",
+        "targetAbi": "10.11.3.0",
+        "sourceUrl": "http://127.0.0.1:4444/static/plugin-repository/Jellyfin.Plugin.M3uGuide_0.8.0.0.zip",
+        "checksum": "E53FD507D57B25C6C7946893799A39EC",
+        "timestamp": "2026-08-13T00:00:00Z"
+      },
+      {
+        "version": "0.7.0.0",
+        "changelog": "Series parse diagnostics, multilingual/date/absolute episode rules, stable-ID corrections, path/NFO previews, and dashboard editing.",
+        "targetAbi": "10.11.3.0",
+        "sourceUrl": "http://127.0.0.1:4444/static/plugin-repository/Jellyfin.Plugin.M3uGuide_0.7.0.0.zip",
+        "checksum": "F3AB799AC5224A67785E34878C2B13AC",
+        "timestamp": "2026-08-13T00:00:00Z"
+      },
+      {
+        "version": "0.6.0.0",
+        "changelog": "Authoritative NFO metadata, remote-provider suppression with administrator opt-in, season NFO records, and Jellyfin library-scan reporting.",
+        "targetAbi": "10.11.3.0",
+        "sourceUrl": "http://127.0.0.1:4444/static/plugin-repository/Jellyfin.Plugin.M3uGuide_0.6.0.0.zip",
+        "checksum": "17D7755B5E6640CFDCD150DBC25EE0CB",
+        "timestamp": "2026-08-13T00:00:00Z"
+      },
+      {
+        "version": "0.5.0.0",
+        "changelog": "Canonical provider origins, ordered mirrors, non-destructive playback URL rewriting, User-Agent control, and credential-redacted endpoint health checks.",
+        "targetAbi": "10.11.3.0",
+        "sourceUrl": "http://127.0.0.1:4444/static/plugin-repository/Jellyfin.Plugin.M3uGuide_0.5.0.0.zip",
+        "checksum": "8169A7E856314BB9FF0A6A4D00445FA4",
+        "timestamp": "2026-08-13T00:00:00Z"
+      },
+      {
+        "version": "0.4.0.0",
+        "changelog": "Synchronization status, phase/progress reporting, source/materialized/indexed counts, exact failure state, and mutually exclusive scoped refresh actions.",
+        "targetAbi": "10.11.3.0",
+        "sourceUrl": "http://127.0.0.1:4444/static/plugin-repository/Jellyfin.Plugin.M3uGuide_0.4.0.0.zip",
+        "checksum": "E9387C4B5080FB0CD19C9FAD5C1A2F2D",
+        "timestamp": "2026-08-13T00:00:00Z"
+      },
+      {
+        "version": "0.3.0.0",
+        "changelog": "Revision-aware Live and VOD synchronization, resumable VOD checkpoints, safe staged replacement, delta reporting, revision consistency checks, and unchanged-work suppression.",
+        "targetAbi": "10.11.3.0",
+        "sourceUrl": "http://127.0.0.1:4444/static/plugin-repository/Jellyfin.Plugin.M3uGuide_0.3.0.0.zip",
+        "checksum": "5553DA223379F7DA1EA2A6600817B18F",
+        "timestamp": "2026-08-13T00:00:00Z"
+      },
+      {
+        "version": "0.2.0.0",
+        "changelog": "Saved-token playlist discovery, remembered playlist/profile selection, searchable Live/Movie/Series group controls, unlimited full-catalog synchronization, profile-aware downloads, and synchronization/rescan actions.",
+        "targetAbi": "10.11.3.0",
+        "sourceUrl": "http://127.0.0.1:4444/static/plugin-repository/Jellyfin.Plugin.M3uGuide_0.2.0.0.zip",
+        "checksum": "A03EC2FA3D0C0957211D0CBEE541913F",
+        "timestamp": "2026-08-12T23:19:25Z"
+      },
+      {
+        "version": "0.1.0.0",
+        "changelog": "Initial local integration, authentication and artifact synchronization.",
+        "targetAbi": "10.11.3.0",
+        "sourceUrl": "http://127.0.0.1:4444/static/plugin-repository/Jellyfin.Plugin.M3uGuide_0.1.0.0.zip",
+        "checksum": "0418F2F4D10A554F2BB4AA6C9D4E6923",
+        "timestamp": "2026-08-12T19:55:00Z"
+      }
+    ]
+  }
+]

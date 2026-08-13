@@ -29,6 +29,8 @@ function loadPlaylists() {
                 const m3uUrl  = playlist.m3u_url  ? origin + playlist.m3u_url  : null;
                 const epgUrl  = playlist.epg_url  ? origin + playlist.epg_url  : null;
                 const editUrl = playlist.edited_m3u_url ? origin + playlist.edited_m3u_url : null;
+                const jellyfinM3uUrl = playlist.jellyfin_m3u_url ? origin + playlist.jellyfin_m3u_url : null;
+                const jellyfinEpgUrl = playlist.jellyfin_epg_url ? origin + playlist.jellyfin_epg_url : null;
 
                 const adminBtn = window.location.search.includes('admin=true') ? `
                     <button class="btn original-analysis-btn action-chip"
@@ -86,12 +88,16 @@ function loadPlaylists() {
                                     onclick="optimizePlaylist('${playlist.name}')"
                                     ${hasAnalysis ? '' : 'disabled'}
                                     data-command="${encodedCmd}">Optimize</button>
+                            <button class="btn jellyfin-export-btn action-chip action-chip-accent"
+                                    onclick="exportForJellyfin('${playlist.name}')">Jellyfin Export</button>
                             <button class="btn delete-btn action-chip action-chip-danger" onclick="deletePlaylist('${playlist.name}')">Delete</button>
                         </div>
                         <div style="display:flex; flex-wrap:wrap; gap:0.4rem; padding-top:0.5rem; border-top:1px solid rgba(255,255,255,0.06); margin-top:0.5rem;">
                             ${m3uUrl ? `<button class="btn action-chip" style="background:rgba(0,212,255,0.1);color:#a8e8ff;" onclick="copyPlaylistUrl(this,'${m3uUrl}')">M3U</button>` : ''}
                             ${epgUrl ? `<button class="btn action-chip" style="background:rgba(0,212,255,0.1);color:#a8e8ff;" onclick="copyPlaylistUrl(this,'${epgUrl}')">EPG</button>` : ''}
                             ${editUrl ? `<button class="btn action-chip" style="background:rgba(168,232,255,0.1);color:#a8e8ff;" onclick="copyPlaylistUrl(this,'${editUrl}')">M3U-Edit</button>` : ''}
+                            ${jellyfinM3uUrl ? `<button class="btn action-chip" style="background:rgba(123,92,255,0.16);color:#c9bdff;" onclick="copyPlaylistUrl(this,'${jellyfinM3uUrl}')">JF M3U</button>` : ''}
+                            ${jellyfinEpgUrl ? `<button class="btn action-chip" style="background:rgba(123,92,255,0.16);color:#c9bdff;" onclick="copyPlaylistUrl(this,'${jellyfinEpgUrl}')">JF EPG</button>` : ''}
                         </div>
                     </div>
                 `;
@@ -438,4 +444,29 @@ function escapeHtml(str) {
     const div = document.createElement('div');
     div.appendChild(document.createTextNode(str));
     return div.innerHTML;
+}
+
+function exportForJellyfin(name) {
+    if (!currentUserId) return;
+    const button = $(`button.jellyfin-export-btn[onclick="exportForJellyfin('${name}')"]`);
+    button.prop('disabled', true).text('Exporting...');
+    $('#processingStatus').show();
+    $('#statusMessage').text('Building Jellyfin M3U and EPG artifacts...');
+
+    $.ajax({
+        url: `/playlist/${currentUserId}/${encodeURIComponent(name)}/export/jellyfin`,
+        type: 'POST'
+    })
+        .done(function (manifest) {
+            $('#processingStatus').hide();
+            const liveCount = manifest.counts?.m3u?.exported_live || 0;
+            const guideCount = manifest.counts?.xmltv?.programmes || 0;
+            alert(`Jellyfin export ready: ${liveCount.toLocaleString()} live channels and ${guideCount.toLocaleString()} guide programmes.`);
+            loadPlaylists();
+        })
+        .fail(function (error) {
+            $('#processingStatus').hide();
+            button.prop('disabled', false).text('Jellyfin Export');
+            alert('Jellyfin export failed: ' + (error.responseJSON?.error || 'Unknown error'));
+        });
 }

@@ -2,8 +2,9 @@ from flask import Flask, request, jsonify, send_from_directory, session, redirec
 import os
 import requests
 import subprocess
-import tempfile
+import sys
 import secrets
+import hashlib
 import logging
 import threading
 import uuid
@@ -14,13 +15,21 @@ from pathlib import Path
 from dotenv import load_dotenv
 from logging.handlers import RotatingFileHandler
 from werkzeug.utils import secure_filename
-from models import db, init_db, User, Playlist
+from models import db, init_db, User, Playlist, IntegrationToken
 from auth import auth
 import urllib.parse
 import re
 import json
 from collections import defaultdict
 import m3u_epg_editor as editor
+from jellyfin_export import generate_jellyfin_export, iter_m3u
+from jellyfin_vod_export import generate_vod_fixture, _safe
+from jellyfin_profiles import load_profiles, save_profile
+from jellyfin_vod_catalog import generate_vod_catalog, read_catalog_page
+from provider_mirrors import normalize_mirrors, normalize_origin, rewrite_provider_url
+from provider_health import probe_xtream_provider
+from credential_crypto import decrypt_password, store_password
+from security_controls import rate_limit, redact_data, redact_secrets
 
 # Setup DNS for the whole app
 editor.setup_custom_dns()
@@ -49,10 +58,11 @@ BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / 'static'
 TEMPLATES_DIR = BASE_DIR / 'templates'
 LOG_DIR = BASE_DIR / 'logs'
+SESSION_DIR = BASE_DIR / 'data' / 'sessions'
 
 # Ensure directories exist
-for directory in [STATIC_DIR, TEMPLATES_DIR, LOG_DIR]:
-    directory.mkdir(exist_ok=True)
+for directory in [STATIC_DIR, TEMPLATES_DIR, LOG_DIR, SESSION_DIR]:
+    directory.mkdir(exist_ok=True, parents=True)
 
 class PlaylistManager:
     def __init__(self, base_dir):
@@ -128,7 +138,10 @@ app = Flask(__name__,
 app.config.update(
     SECRET_KEY=os.getenv('FLASK_SECRET_KEY', secrets.token_hex(32)),
     SESSION_TYPE='filesystem',
-    SESSION_FILE_DIR=tempfile.gettempdir(),
+    # Never use the system-wide temporary directory here. Flask-Session may
+    # inspect files in this directory during cleanup, which can make a login
+    # appear to hang on a busy development machine.
+    SESSION_FILE_DIR=str(SESSION_DIR),
     SESSION_PERMANENT=False,
     PERMANENT_SESSION_LIFETIME=timedelta(hours=1),
     MAX_CONTENT_LENGTH=300 * 1024 * 1024,  # 100MB max file size
@@ -154,6 +167,14 @@ with app.app_context():
             u.stream_token = secrets.token_hex(16)
     db.session.commit()
 
+    # One-way migration: encrypt legacy provider passwords before serving.
+    for playlist in Playlist.query.all():
+        details = dict(playlist.details or {})
+        if details.get('password'):
+            store_password(details, str(details['password']))
+            playlist.details = details
+    db.session.commit()
+
 # Register blueprints
 app.register_blueprint(auth, url_prefix='/auth')
 
@@ -162,6 +183,14 @@ app.register_blueprint(auth, url_prefix='/auth')
 playlist_manager = PlaylistManager(BASE_DIR)
 
 # Configure logging
+class SecretRedactionFilter(logging.Filter):
+    def filter(self, record):
+        record.msg = redact_secrets(record.msg)
+        if record.args:
+            record.args = tuple(redact_secrets(item) for item in record.args) if isinstance(record.args, tuple) else redact_secrets(record.args)
+        return True
+
+
 if not app.debug:
     file_handler = RotatingFileHandler(
         LOG_DIR / 'app.log',
@@ -175,6 +204,22 @@ if not app.debug:
     app.logger.addHandler(file_handler)
     app.logger.setLevel(logging.INFO)
     app.logger.info('Application startup')
+
+for handler in app.logger.handlers:
+    handler.addFilter(SecretRedactionFilter())
+for handler in logging.getLogger('werkzeug').handlers:
+    handler.addFilter(SecretRedactionFilter())
+
+
+@app.after_request
+def redact_json_responses(response):
+    """Prevent legacy and future JSON errors from serializing secrets."""
+    if response.is_json and response.status_code >= 400:
+        payload = response.get_json(silent=True)
+        if payload is not None:
+            response.set_data(json.dumps(redact_data(payload), ensure_ascii=False))
+            response.content_type = 'application/json'
+    return response
 
 @app.route('/')
 def serve_index():
@@ -197,6 +242,8 @@ def get_playlists():
         safe_name = secure_filename(p.name)
         base_path = os.path.join(app.static_folder, 'playlists', str(uid), safe_name)
         stream_prefix = f'/stream/{token}/{safe_name}'
+        jellyfin_path = os.path.join(base_path, 'exports', 'jellyfin', 'default')
+        jellyfin_prefix = f'{stream_prefix}/jellyfin'
         playlist_list.append({
             'name': p.name,
             'source': p.source,
@@ -212,11 +259,462 @@ def get_playlists():
             'm3u_url': f'{stream_prefix}/tv.m3u',
             'epg_url': f'{stream_prefix}/epg.xml' if os.path.exists(os.path.join(base_path, 'epg.xml')) else None,
             'edited_m3u_url': f'{stream_prefix}/tv_edited.m3u' if os.path.exists(os.path.join(base_path, 'tv_edited.m3u')) else None,
+            'jellyfin_m3u_url': f'{jellyfin_prefix}/live.m3u8' if os.path.exists(os.path.join(jellyfin_path, 'live.m3u8')) else None,
+            'jellyfin_epg_url': f'{jellyfin_prefix}/epg.xml' if os.path.exists(os.path.join(jellyfin_path, 'epg.xml')) else None,
+            'jellyfin_manifest_url': f'{jellyfin_prefix}/manifest.json' if os.path.exists(os.path.join(jellyfin_path, 'manifest.json')) else None,
         })
     return jsonify({
         'user_id': uid,
         'playlists': playlist_list
     })
+
+def _integration_auth():
+    authorization = request.headers.get('Authorization', '')
+    if not authorization.startswith('Bearer '):
+        return None
+    raw_token = authorization[7:].strip()
+    if not raw_token:
+        return None
+    token = IntegrationToken.query.filter_by(
+        token_hash=IntegrationToken.digest(raw_token), revoked_at=None
+    ).first()
+    if token:
+        token.last_used_at = datetime.utcnow()
+        db.session.commit()
+    return token
+
+@app.route('/api/jellyfin/auth', methods=['POST'])
+def jellyfin_authenticate():
+    """Exchange m3u.guide credentials for a revocable Jellyfin token."""
+    data = request.get_json(silent=True) or {}
+    username = str(data.get('username', '')).strip()
+    allowed, retry_after = rate_limit(f'jellyfin-auth:{request.remote_addr}:{username.casefold()}', 5, 300)
+    if not allowed:
+        response = jsonify({'error': 'Too many authentication attempts'})
+        response.status_code = 429
+        response.headers['Retry-After'] = str(retry_after)
+        return response
+    password = str(data.get('password', ''))
+    user = User.query.filter_by(username=username).first()
+    if not user or not user.check_password(password):
+        return jsonify({'error': 'Invalid username or password'}), 401
+    record, raw_token = IntegrationToken.issue(
+        user, str(data.get('device_name', 'Jellyfin'))
+    )
+    return jsonify({
+        'access_token': raw_token,
+        'token_type': 'Bearer',
+        'token_id': record.id,
+        'username': user.username,
+    })
+
+@app.route('/api/jellyfin/account')
+def jellyfin_account():
+    token = _integration_auth()
+    if not token:
+        return jsonify({'error': 'Unauthorized'}), 401
+    playlists = []
+    for playlist in Playlist.query.filter_by(user_id=token.user_id).order_by(Playlist.name).all():
+        playlist_dir = playlist_manager.get_playlist_path(token.user_id, playlist.name)
+        export_root = playlist_dir / 'exports' / 'jellyfin'
+        playlists.append({
+            'name': playlist.name,
+            'source': playlist.source,
+            'profiles': list(load_profiles(playlist_dir)),
+            'export_ready': (export_root / 'default' / 'manifest.json').exists(),
+            'vod_ready': (export_root / 'vod-fixture.zip').exists(),
+        })
+    return jsonify({'playlists': playlists})
+
+@app.route('/api/jellyfin/playlists/<path:playlist_name>/export', methods=['POST'])
+def jellyfin_api_export(playlist_name):
+    token = _integration_auth()
+    if not token:
+        return jsonify({'error': 'Unauthorized'}), 401
+    playlist = Playlist.query.filter_by(user_id=token.user_id, name=playlist_name).first()
+    if not playlist:
+        return jsonify({'error': 'Playlist not found'}), 404
+    playlist_path = playlist_manager.get_playlist_path(token.user_id, playlist.name)
+    requested_profile = str((request.get_json(silent=True) or {}).get('profile', 'default'))
+    profiles = load_profiles(playlist_path)
+    if requested_profile not in profiles:
+        return jsonify({'error': 'Export profile not found'}), 404
+    profile = profiles[requested_profile]
+    details = dict(playlist.details or {})
+    source = (playlist_path / 'tv_edited.m3u') if (playlist_path / 'tv_edited.m3u').exists() else (playlist_path / 'tv.m3u')
+    manifest = generate_jellyfin_export(
+        playlist_path,
+        profile=requested_profile,
+        group_prefixes=tuple(profile.get('live_group_prefixes', [])),
+        stream_base=details.get('stream_base'),
+        active_mirror=details.get('active_mirror'),
+    )
+    vod = generate_vod_catalog(
+        source,
+        playlist_path / 'exports' / 'jellyfin' / requested_profile,
+        profile,
+        overrides_path=playlist_path / 'vod-overrides.json',
+        stream_base=details.get('stream_base'),
+        active_mirror=details.get('active_mirror'),
+    )
+    manifest['vod'] = vod
+    return jsonify(manifest)
+
+@app.route('/api/jellyfin/playlists/<path:playlist_name>/profiles')
+def jellyfin_api_profiles(playlist_name):
+    token = _integration_auth()
+    if not token:
+        return jsonify({'error': 'Unauthorized'}), 401
+    playlist = Playlist.query.filter_by(user_id=token.user_id, name=playlist_name).first()
+    if not playlist:
+        return jsonify({'error': 'Playlist not found'}), 404
+    return jsonify({'profiles': list(load_profiles(playlist_manager.get_playlist_path(token.user_id, playlist.name)).values())})
+
+@app.route('/api/jellyfin/playlists/<path:playlist_name>/groups')
+def jellyfin_api_groups(playlist_name):
+    """Return selectable source groups and counts for each content kind."""
+    token = _integration_auth()
+    if not token:
+        return jsonify({'error': 'Unauthorized'}), 401
+    playlist = Playlist.query.filter_by(user_id=token.user_id, name=playlist_name).first()
+    if not playlist:
+        return jsonify({'error': 'Playlist not found'}), 404
+    playlist_path = playlist_manager.get_playlist_path(token.user_id, playlist.name)
+    source = (playlist_path / 'tv_edited.m3u') if (playlist_path / 'tv_edited.m3u').exists() else (playlist_path / 'tv.m3u')
+    if not source.exists():
+        return jsonify({'error': 'Playlist source file not found'}), 404
+
+    source_stat = source.stat()
+    cache_path = playlist_path / 'jellyfin_groups.json'
+    signature = {'size': source_stat.st_size, 'mtime_ns': source_stat.st_mtime_ns}
+    if cache_path.exists():
+        try:
+            cached = json.loads(cache_path.read_text(encoding='utf-8'))
+            if cached.get('source') == signature:
+                return jsonify(cached['groups'])
+        except (OSError, ValueError, KeyError):
+            pass
+
+    counts = {'live': defaultdict(int), 'movie': defaultdict(int), 'series': defaultdict(int)}
+    for entry in iter_m3u(source):
+        group = entry.attributes.get('group-title', '').strip() or 'Uncategorized'
+        counts[entry.content_kind][group] += 1
+    raw_result = {
+        kind: [
+            {'name': name, 'count': count}
+            for name, count in sorted(groups.items(), key=lambda item: item[0].casefold())
+        ]
+        for kind, groups in counts.items()
+    }
+    cache_path.write_text(
+        json.dumps({'source': signature, 'groups': raw_result}, ensure_ascii=False),
+        encoding='utf-8',
+    )
+    return jsonify(raw_result)
+
+
+@app.route('/api/jellyfin/playlists/<path:playlist_name>/provider', methods=['GET', 'PUT'])
+def jellyfin_api_provider(playlist_name):
+    """Manage provider origins without exposing stored Xtream credentials."""
+    token = _integration_auth()
+    if not token:
+        return jsonify({'error': 'Unauthorized'}), 401
+    playlist = Playlist.query.filter_by(user_id=token.user_id, name=playlist_name).first()
+    if not playlist:
+        return jsonify({'error': 'Playlist not found'}), 404
+    details = dict(playlist.details or {})
+    source_origin = details.get('stream_base') or details.get('server')
+    if not source_origin:
+        source_path = playlist_manager.get_playlist_path(token.user_id, playlist.name) / 'tv.m3u'
+        source_origin = detect_stream_base(source_path)
+    if request.method == 'PUT':
+        try:
+            payload = request.get_json(silent=True) or {}
+            mirrors = normalize_mirrors(payload.get('mirrors', []))
+            active = normalize_origin(payload.get('active_mirror'))
+            source_origin = normalize_origin(source_origin)
+            allowed = {item.casefold() for item in mirrors}
+            if source_origin:
+                allowed.add(source_origin.casefold())
+            if active and active.casefold() not in allowed:
+                raise ValueError('Active provider must be the canonical source or an ordered mirror')
+            details['stream_base'] = source_origin
+            details['mirrors'] = mirrors
+            details['active_mirror'] = active
+            if 'user_agent' in payload:
+                details['user_agent'] = str(payload['user_agent']).strip()[:256]
+            playlist.details = details
+            db.session.commit()
+        except ValueError as error:
+            return jsonify({'error': str(error)}), 400
+    return jsonify({
+        'source_origin': source_origin,
+        'mirrors': details.get('mirrors', []),
+        'active_mirror': details.get('active_mirror'),
+        'effective_origin': details.get('active_mirror') or source_origin,
+        'user_agent': details.get('user_agent') or 'VLC/3.0.20 LibVLC/3.0.20',
+    })
+
+
+def _load_vod_overrides(playlist_path):
+    path = playlist_path / 'vod-overrides.json'
+    if not path.exists():
+        return {'version': 1, 'series_aliases': {}, 'items': {}}
+    data = json.loads(path.read_text(encoding='utf-8'))
+    data.setdefault('version', 1)
+    data.setdefault('series_aliases', {})
+    data.setdefault('items', {})
+    return data
+
+
+@app.route('/api/jellyfin/playlists/<path:playlist_name>/profiles/<string:profile_name>/vod/diagnostics')
+def jellyfin_api_vod_diagnostics(playlist_name, profile_name):
+    """Return paginated parse failures with stable IDs and saved corrections."""
+    token = _integration_auth()
+    if not token:
+        return jsonify({'error': 'Unauthorized'}), 401
+    playlist = Playlist.query.filter_by(user_id=token.user_id, name=playlist_name).first()
+    if not playlist:
+        return jsonify({'error': 'Playlist not found'}), 404
+    try:
+        cursor = max(0, int(request.args.get('cursor', '0')))
+        limit = min(500, max(1, int(request.args.get('limit', '100'))))
+    except ValueError:
+        return jsonify({'error': 'cursor and limit must be integers'}), 400
+    playlist_path = playlist_manager.get_playlist_path(token.user_id, playlist.name)
+    diagnostics = playlist_path / 'exports' / 'jellyfin' / profile_name / 'vod.parse-diagnostics.jsonl'
+    if not diagnostics.exists():
+        return jsonify({'error': 'Parse diagnostics not found; generate the export first'}), 404
+    records, next_cursor = read_catalog_page(diagnostics, cursor, limit)
+    overrides = _load_vod_overrides(playlist_path).get('items', {})
+    for record in records:
+        record['override'] = overrides.get(record['id'])
+    manifest_path = diagnostics.parent / 'vod.manifest.json'
+    manifest = json.loads(manifest_path.read_text(encoding='utf-8')) if manifest_path.exists() else {}
+    return jsonify({'items': records, 'next_cursor': next_cursor, 'counts': manifest.get('counts', {})})
+
+
+@app.route('/api/jellyfin/playlists/<path:playlist_name>/vod/overrides/<string:item_id>', methods=['PUT', 'DELETE'])
+def jellyfin_api_vod_override(playlist_name, item_id):
+    """Persist a correction keyed by the stable provider source ID."""
+    token = _integration_auth()
+    if not token:
+        return jsonify({'error': 'Unauthorized'}), 401
+    playlist = Playlist.query.filter_by(user_id=token.user_id, name=playlist_name).first()
+    if not playlist:
+        return jsonify({'error': 'Playlist not found'}), 404
+    if not re.fullmatch(r'[a-f0-9]{24}', item_id):
+        return jsonify({'error': 'Invalid stable item ID'}), 400
+    playlist_path = playlist_manager.get_playlist_path(token.user_id, playlist.name)
+    data = _load_vod_overrides(playlist_path)
+    if request.method == 'DELETE':
+        data['items'].pop(item_id, None)
+    else:
+        payload = request.get_json(silent=True) or {}
+        try:
+            correction = {
+                'series': str(payload['series']).strip(),
+                'season': int(payload.get('season', 1)),
+                'episode': int(payload['episode']),
+                'episode_title': str(payload.get('episode_title') or '').strip(),
+            }
+            if not correction['series'] or correction['season'] < 0 or correction['episode'] < 1:
+                raise ValueError
+        except (KeyError, TypeError, ValueError):
+            return jsonify({'error': 'Series, non-negative season, and positive episode are required'}), 400
+        data['items'][item_id] = correction
+    path = playlist_path / 'vod-overrides.json'
+    temporary = path.with_suffix('.json.tmp')
+    temporary.write_text(json.dumps(data, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+    temporary.replace(path)
+    return jsonify({'id': item_id, 'override': data['items'].get(item_id)})
+
+
+@app.route('/api/jellyfin/playlists/<path:playlist_name>/vod/overrides/<string:item_id>/preview', methods=['POST'])
+def jellyfin_api_vod_override_preview(playlist_name, item_id):
+    """Preview the Jellyfin path and NFO fields for a correction."""
+    token = _integration_auth()
+    if not token:
+        return jsonify({'error': 'Unauthorized'}), 401
+    playlist = Playlist.query.filter_by(user_id=token.user_id, name=playlist_name).first()
+    if not playlist:
+        return jsonify({'error': 'Playlist not found'}), 404
+    payload = request.get_json(silent=True) or {}
+    try:
+        series = str(payload['series']).strip()
+        season = int(payload.get('season', 1))
+        episode = int(payload['episode'])
+        title = str(payload.get('episode_title') or f'Episode {episode}').strip()
+        if not series or season < 0 or episode < 1:
+            raise ValueError
+    except (KeyError, TypeError, ValueError):
+        return jsonify({'error': 'Series, non-negative season, and positive episode are required'}), 400
+    series_id = hashlib.sha256(series.casefold().encode('utf-8')).hexdigest()[:24]
+    show = f'Shows/{_safe(series)} [m3u-{series_id}]'
+    stem = f'S{season:02d}E{episode:03d} [m3u-{item_id}]'
+    return jsonify({
+        'relative_path': f'{show}/Season {season:02d}/{stem}.strm',
+        'nfo': {'title': title, 'showtitle': series, 'season': season, 'episode': episode, 'uniqueid': item_id},
+    })
+
+
+@app.route('/api/jellyfin/playlists/<path:playlist_name>/provider/health', methods=['POST'])
+def jellyfin_api_provider_health(playlist_name):
+    """Run credential-safe, independent provider endpoint checks."""
+    token = _integration_auth()
+    if not token:
+        return jsonify({'error': 'Unauthorized'}), 401
+    playlist = Playlist.query.filter_by(user_id=token.user_id, name=playlist_name).first()
+    if not playlist:
+        return jsonify({'error': 'Playlist not found'}), 404
+    allowed, retry_after = rate_limit(f'provider-health:{token.id}', 10, 60)
+    if not allowed:
+        response = jsonify({'error': 'Provider health check rate limit exceeded'})
+        response.status_code = 429
+        response.headers['Retry-After'] = str(retry_after)
+        return response
+    details = dict(playlist.details or {})
+    username = details.get('username')
+    password = decrypt_password(details)
+    origin = details.get('active_mirror') or details.get('stream_base') or details.get('server')
+    if not all([origin, username, password]):
+        return jsonify({'error': 'Provider origin or stored Xtream credentials are incomplete'}), 400
+    try:
+        origin = normalize_origin(origin)
+        source = playlist_manager.get_playlist_path(token.user_id, playlist.name) / 'tv.m3u'
+        media_url = None
+        if source.exists():
+            first = next(iter_m3u(source), None)
+            if first:
+                media_url = rewrite_provider_url(first.url, details.get('stream_base'), origin)
+        result = probe_xtream_provider(
+            origin,
+            username,
+            password,
+            user_agent=details.get('user_agent') or 'VLC/3.0.20 LibVLC/3.0.20',
+            media_url=media_url,
+        )
+        return jsonify(result)
+    except ValueError as error:
+        return jsonify({'error': str(error)}), 400
+
+@app.route('/api/jellyfin/playlists/<path:playlist_name>/profiles/<string:profile_name>', methods=['PUT'])
+def jellyfin_api_save_profile(playlist_name, profile_name):
+    token = _integration_auth()
+    if not token:
+        return jsonify({'error': 'Unauthorized'}), 401
+    playlist = Playlist.query.filter_by(user_id=token.user_id, name=playlist_name).first()
+    if not playlist:
+        return jsonify({'error': 'Playlist not found'}), 404
+    try:
+        profile = save_profile(
+            playlist_manager.get_playlist_path(token.user_id, playlist.name),
+            profile_name,
+            request.get_json(silent=True) or {},
+        )
+        return jsonify(profile)
+    except ValueError as error:
+        return jsonify({'error': str(error)}), 400
+
+@app.route('/api/jellyfin/playlists/<path:playlist_name>/profiles/<string:profile_name>/vod')
+def jellyfin_api_vod_page(playlist_name, profile_name):
+    token = _integration_auth()
+    if not token:
+        return jsonify({'error': 'Unauthorized'}), 401
+    playlist = Playlist.query.filter_by(user_id=token.user_id, name=playlist_name).first()
+    if not playlist:
+        return jsonify({'error': 'Playlist not found'}), 404
+    try:
+        cursor = max(0, int(request.args.get('cursor', '0')))
+        limit = min(1000, max(1, int(request.args.get('limit', '500'))))
+    except ValueError:
+        return jsonify({'error': 'cursor and limit must be integers'}), 400
+    export_path = playlist_manager.get_playlist_path(token.user_id, playlist.name) / 'exports' / 'jellyfin' / profile_name
+    catalog = export_path / 'vod.catalog.jsonl'
+    manifest_path = export_path / 'vod.manifest.json'
+    if not catalog.exists():
+        return jsonify({'error': 'VOD catalog not found; generate the export first'}), 404
+    if not manifest_path.exists():
+        return jsonify({'error': 'VOD manifest not found; generate the export first'}), 404
+    manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+    revision = manifest.get('revision', '')
+    expected_revision = request.args.get('revision')
+    if expected_revision and expected_revision != revision:
+        return jsonify({
+            'error': 'VOD catalog revision changed; restart synchronization',
+            'revision': revision,
+        }), 409
+    records, next_cursor = read_catalog_page(catalog, cursor, limit)
+    return jsonify({'items': records, 'next_cursor': next_cursor, 'revision': revision})
+
+@app.route('/api/jellyfin/playlists/<path:playlist_name>/artifacts/<string:filename>')
+def jellyfin_api_artifact(playlist_name, filename):
+    token = _integration_auth()
+    if not token:
+        return jsonify({'error': 'Unauthorized'}), 401
+    allowed = {'live.m3u8', 'epg.xml', 'manifest.json', 'validation.json', 'vod-fixture.zip'}
+    if filename not in allowed:
+        return jsonify({'error': 'Invalid artifact'}), 400
+    playlist = Playlist.query.filter_by(user_id=token.user_id, name=playlist_name).first()
+    if not playlist:
+        return jsonify({'error': 'Playlist not found'}), 404
+    profile_name = request.args.get('profile', 'default')
+    root = playlist_manager.get_playlist_path(token.user_id, playlist.name) / 'exports' / 'jellyfin'
+    artifact_dir = root if filename == 'vod-fixture.zip' else root / profile_name
+    if not (artifact_dir / filename).exists():
+        return jsonify({'error': 'Artifact not found; generate the export first'}), 404
+    return send_from_directory(artifact_dir, filename)
+
+@app.route('/api/jellyfin/token', methods=['DELETE'])
+def jellyfin_revoke_token():
+    token = _integration_auth()
+    if not token:
+        return jsonify({'error': 'Unauthorized'}), 401
+    token.revoked_at = datetime.utcnow()
+    db.session.commit()
+
+    return ('', 204)
+
+
+@app.route('/api/jellyfin/tokens')
+def jellyfin_tokens():
+    """List integration token metadata without returning token material."""
+    token = _integration_auth()
+    if not token:
+        return jsonify({'error': 'Unauthorized'}), 401
+    records = IntegrationToken.query.filter_by(user_id=token.user_id).order_by(IntegrationToken.created_at.desc()).all()
+    return jsonify({'tokens': [{
+        'id': item.id, 'device_name': item.name, 'token_prefix': item.token_prefix,
+        'created_at': item.created_at.isoformat() if item.created_at else None,
+        'last_used_at': item.last_used_at.isoformat() if item.last_used_at else None,
+        'revoked_at': item.revoked_at.isoformat() if item.revoked_at else None,
+        'current': item.id == token.id,
+    } for item in records]})
+
+
+@app.route('/api/jellyfin/tokens/<int:token_id>', methods=['DELETE'])
+def jellyfin_revoke_token_by_id(token_id):
+    token = _integration_auth()
+    if not token:
+        return jsonify({'error': 'Unauthorized'}), 401
+    target = IntegrationToken.query.filter_by(id=token_id, user_id=token.user_id).first()
+    if not target:
+        return jsonify({'error': 'Token not found'}), 404
+    target.revoked_at = datetime.utcnow()
+    db.session.commit()
+    return ('', 204)
+
+
+@app.route('/api/jellyfin/token/rotate', methods=['POST'])
+def jellyfin_rotate_token():
+    """Revoke the current token and issue a replacement for the same device."""
+    token = _integration_auth()
+    if not token:
+        return jsonify({'error': 'Unauthorized'}), 401
+    user = User.query.get(token.user_id)
+    token.revoked_at = datetime.utcnow()
+    record, raw_token = IntegrationToken.issue(user, token.name)
+    return jsonify({'access_token': raw_token, 'token_id': record.id, 'token_type': 'Bearer'})
 
 def _bg_process_playlist(app_ctx, job_id, user_id, name, source, form_data, files_data, host_url):
     with app_ctx:
@@ -352,7 +850,7 @@ def analyze_playlist_internal(user_id, playlist_name):
 
     # Run analyzer script
     result = subprocess.run(
-        ['python3', str(analyzer_script), str(m3u_path), str(epg_path)],
+        [sys.executable, str(analyzer_script), str(m3u_path), str(epg_path)],
         cwd=str(analysis_dir),
         capture_output=True,
         text=True,
@@ -405,11 +903,12 @@ def process_api_line(form_data, m3u_path, epg_path, details):
         # Update details
         details.update({
             'server': server,
+            'stream_base': normalize_origin(server),
             'username': username,
-            'password': password,
             'm3u_path': str(m3u_path),
             'epg_path': str(epg_path)
         })
+        store_password(details, password)
         return True
 
     except Exception as e:
@@ -422,30 +921,36 @@ def process_xtream_api(form_data, m3u_path, epg_path, details, host_url=None, pr
             progress_cb(msg)
 
     try:
-        server = form_data.get('server') or form_data['server']
+        server = (form_data.get('server') or form_data['server']).strip().rstrip('/')
         username = form_data.get('username') or form_data['username']
         password = form_data.get('password') or form_data['password']
         include_vod = form_data.get('include_vod') == 'true'
         include_series = form_data.get('include_series') == 'true'
         include_proxy = form_data.get('include_proxy') == 'true'
+        series_limit_value = form_data.get('series_limit')
+        series_limit = int(series_limit_value) if series_limit_value else None
 
         m3u_url = f"{server}/get.php?username={username}&password={password}&type=m3u_plus&output=ts"
         epg_url = f"{server}/xmltv.php?username={username}&password={password}"
 
         class MockArgs:
-            def __init__(self, m3uurl, include_vod, include_series, include_proxy, proxy_base):
+            def __init__(self, m3uurl, include_vod, include_series, include_proxy, proxy_base, series_limit=None):
                 self.m3uurl = m3uurl
                 self.include_vod = include_vod
                 self.include_series = include_series
                 self.include_proxy = include_proxy
                 self.proxy_base = proxy_base
+                self.series_limit = series_limit
 
         base = (host_url or request.host_url).rstrip('/')
         proxy_base = base + '/stream_proxy?url='
-        mock_args = MockArgs(m3u_url, include_vod, include_series, include_proxy, proxy_base if include_proxy else None)
+        mock_args = MockArgs(m3u_url, include_vod, include_series, include_proxy, proxy_base if include_proxy else None, series_limit)
 
         headers = {
-            'User-Agent': editor.get_random_user_agent(),
+            # This provider class can reject browser identities while allowing
+            # IPTV clients. Keep Xtream API requests deterministic and aligned
+            # with the clients that successfully use the same subscription.
+            'User-Agent': 'VLC/3.0.20 LibVLC/3.0.20',
             'Connection': 'close'
         }
 
@@ -455,23 +960,64 @@ def process_xtream_api(form_data, m3u_path, epg_path, details, host_url=None, pr
         if not m3u_response or m3u_response.status_code != 200:
             raise ValueError(f"Failed to fetch M3U via Xtream API (Status: {m3u_response.status_code if m3u_response else 'N/A'})")
 
+        # Some providers authenticate get.php but return empty arrays from
+        # player_api.php. In that case use their conventional M3U response
+        # rather than persisting a header-only playlist as a success.
+        if b'#EXTINF:' not in m3u_response.content:
+            _prog('Xtream API returned no entries; trying direct M3U endpoint')
+            direct_response = requests.get(m3u_url, headers=headers, timeout=60)
+            if direct_response.status_code != 200:
+                provider = 'Cloudflare/provider origin' if direct_response.status_code == 520 else 'Provider'
+                raise ValueError(
+                    f'{provider} returned HTTP {direct_response.status_code} from the direct M3U endpoint'
+                )
+            if b'#EXTINF:' not in direct_response.content:
+                raise ValueError(
+                    'Provider returned an empty playlist from both the Xtream API '
+                    'and direct M3U endpoint'
+                )
+            m3u_response = direct_response
+            _prog('Direct M3U playlist received')
+
         _prog('Saving playlist file…')
         with open(m3u_path, 'wb') as f:
             f.write(m3u_response.content)
 
         _prog('Downloading EPG guide…')
-        download_file(epg_url, epg_path)
+        epg_available = True
+        epg_warning = None
+        try:
+            download_file(epg_url, epg_path)
+        except Exception as epg_error:
+            # A valid Xtream account does not necessarily provide xmltv.php.
+            # Retain its usable live/VOD playlist and supply a valid empty
+            # XMLTV document for downstream processing.
+            epg_available = False
+            epg_warning = str(epg_error)
+            epg_path.write_text(
+                '<?xml version="1.0" encoding="UTF-8"?>\n<tv></tv>\n',
+                encoding='utf-8',
+            )
+            app.logger.warning(
+                'Xtream playlist imported without provider EPG: %s',
+                epg_warning,
+            )
+            _prog('Provider has no XMLTV guide; continuing without EPG')
 
         details.update({
             'server': server,
+            'stream_base': normalize_origin(server),
             'username': username,
-            'password': password,
             'include_vod': include_vod,
             'include_series': include_series,
             'include_proxy': include_proxy,
+            'series_limit': series_limit,
+            'epg_available': epg_available,
+            'epg_warning': epg_warning,
             'm3u_path': str(m3u_path),
             'epg_path': str(epg_path)
         })
+        store_password(details, password)
         return True
 
     except Exception as e:
@@ -778,7 +1324,7 @@ def analyze_playlist():
 
         # Run analyzer script
         result = subprocess.run(
-            ['python3', str(analyzer_script), str(m3u_path), str(epg_path)],
+            [sys.executable, str(analyzer_script), str(m3u_path), str(epg_path)],
             cwd=str(analysis_dir),
             capture_output=True,
             text=True,
@@ -870,9 +1416,9 @@ def optimize_playlist():
 
         groups = groups_match.group(1)
 
-        # Use python from virtual environment if available
-        venv_python = BASE_DIR / 'venv' / 'bin' / 'python3'
-        python_executable = str(venv_python) if venv_python.exists() else 'python3'
+        # Run optimization with the interpreter hosting this application. This
+        # works for both Windows virtual environments and Unix deployments.
+        python_executable = sys.executable
 
         # Build command parts with local file paths
         # Build command parts with local file paths
@@ -975,6 +1521,70 @@ def stream_playlist_file(token, playlist_name, filetype):
     except Exception as e:
         app.logger.error(f"Error serving stream file: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/playlist/<int:user_id>/<path:playlist_name>/export/jellyfin', methods=['POST'])
+def export_playlist_for_jellyfin(user_id, playlist_name):
+    """Generate Jellyfin artifacts from the playlist's saved edited state."""
+    if 'user_id' not in session or session['user_id'] != user_id:
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    playlist = Playlist.query.filter_by(user_id=user_id, name=playlist_name).first()
+    if not playlist:
+        return jsonify({'error': 'Playlist not found'}), 404
+
+    try:
+        from models import User
+        user = User.query.get(user_id)
+        safe_name = secure_filename(playlist_name)
+        public_base = (
+            request.host_url.rstrip('/')
+            + f'/stream/{user.stream_token}/{safe_name}/jellyfin'
+        )
+        playlist_path = playlist_manager.get_playlist_path(user_id, playlist_name)
+        manifest = generate_jellyfin_export(
+            playlist_path,
+            public_base_url=public_base,
+        )
+        vod_counts = generate_vod_fixture(
+            (playlist_path / 'tv_edited.m3u') if (playlist_path / 'tv_edited.m3u').exists()
+            else (playlist_path / 'tv.m3u'),
+            playlist_path / 'exports' / 'jellyfin' / 'vod-fixture',
+        )
+        manifest['vod'] = {
+            'counts': vod_counts,
+            'package_url': f'{public_base}/vod-fixture.zip',
+        }
+        return jsonify(manifest)
+    except (FileNotFoundError, ValueError) as error:
+        return jsonify({'error': str(error)}), 400
+    except Exception as error:
+        app.logger.exception('Jellyfin export failed')
+        return jsonify({'error': str(error)}), 500
+
+
+@app.route('/stream/<string:token>/<path:playlist_name>/jellyfin/<string:filename>')
+def stream_jellyfin_export(token, playlist_name, filename):
+    """Serve generated Jellyfin artifacts through the existing user token."""
+    allowed = {'live.m3u8', 'epg.xml', 'manifest.json', 'validation.json', 'vod-fixture.zip'}
+    if filename not in allowed:
+        return jsonify({'error': 'Invalid artifact'}), 400
+
+    from models import User
+    user = User.query.filter_by(stream_token=token).first()
+    if not user:
+        return jsonify({'error': 'Not found'}), 404
+
+    export_root = (
+        playlist_manager.get_playlist_path(user.id, playlist_name)
+        / 'exports' / 'jellyfin'
+    )
+    export_dir = export_root if filename == 'vod-fixture.zip' else export_root / 'default'
+    if not (export_dir / filename).exists():
+        return jsonify({'error': 'Artifact not found'}), 404
+    response = send_from_directory(export_dir, filename)
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    return response
 
 
 @app.route('/static/playlists/<int:user_id>/<path:playlist_name>/<string:filetype>')
@@ -1235,14 +1845,8 @@ def detect_stream_base(m3u_path):
 
 def apply_mirror_substitution(content, stream_base, active_mirror):
     """Substitute the stream base URL with the active mirror in M3U content."""
-    if not stream_base or not active_mirror or stream_base == active_mirror:
-        return content
+    return rewrite_provider_url(content, stream_base, active_mirror)
     # Proxy-wrapped URLs encode only the colon: http%3A//hostname — use safe='/'
-    encoded_orig   = urllib.parse.quote(stream_base,   safe='/')
-    encoded_mirror = urllib.parse.quote(active_mirror, safe='/')
-    content = content.replace(encoded_orig, encoded_mirror)
-    content = content.replace(stream_base, active_mirror)
-    return content
 
 
 @app.route('/playlist/<int:user_id>/<path:playlist_name>/mirrors', methods=['GET'])
@@ -1288,8 +1892,12 @@ def save_mirrors(user_id, playlist_name):
 
         data = request.json or {}
         details = dict(playlist.details or {})
-        details['mirrors']        = data.get('mirrors', [])
-        details['active_mirror']  = data.get('active_mirror') or None
+        mirrors = normalize_mirrors(data.get('mirrors', []))
+        active = normalize_origin(data.get('active_mirror'))
+        if active and active.casefold() not in {item.casefold() for item in mirrors}:
+            raise ValueError('Active mirror must be included in the ordered mirror list')
+        details['mirrors'] = mirrors
+        details['active_mirror'] = active
         if 'include_vod' in data:
             details['include_vod']    = bool(data['include_vod'])
         if 'include_series' in data:
@@ -1371,7 +1979,7 @@ def refresh_source(user_id, playlist_name):
 
         if source in ('API Line', 'Xtream API'):
             username = details.get('username')
-            password = details.get('password')
+            password = decrypt_password(details)
             server = details.get('active_mirror') or details.get('server')
             if not all([server, username, password]):
                 return jsonify({'error': 'Stored credentials incomplete'}), 400
@@ -1379,29 +1987,19 @@ def refresh_source(user_id, playlist_name):
             epg_url = f"{server}/xmltv.php?username={username}&password={password}"
 
             if source == 'Xtream API':
-                include_vod    = details.get('include_vod', False)
-                include_series = details.get('include_series', False)
-                include_proxy  = details.get('include_proxy', False)
-
-                class MockArgs:
-                    def __init__(self, m3uurl, include_vod, include_series, include_proxy, proxy_base):
-                        self.m3uurl = m3uurl
-                        self.include_vod = include_vod
-                        self.include_series = include_series
-                        self.include_proxy = include_proxy
-                        self.proxy_base = proxy_base
-
-                proxy_base = request.host_url.rstrip('/') + '/stream_proxy?url='
-                mock_args = MockArgs(m3u_url, include_vod, include_series, include_proxy,
-                                     proxy_base if include_proxy else None)
-                headers = {'User-Agent': editor.get_random_user_agent(), 'Connection': 'close'}
-                m3u_response = editor.get_m3u_from_api(m3u_url, headers, mock_args)
-                if not m3u_response or m3u_response.status_code != 200:
-                    status = m3u_response.status_code if m3u_response else 'N/A'
-                    return jsonify({'error': f'Failed to fetch M3U from Xtream API (status {status})'}), 500
-                with open(m3u_path, 'wb') as f:
-                    f.write(m3u_response.content)
-                download_file(epg_url, epg_path)
+                refresh_form = {
+                    'server': server,
+                    'username': username,
+                    'password': password,
+                    'include_vod': str(bool(details.get('include_vod'))).lower(),
+                    'include_series': str(bool(details.get('include_series'))).lower(),
+                    'include_proxy': str(bool(details.get('include_proxy'))).lower(),
+                }
+                if not process_xtream_api(
+                    refresh_form, m3u_path, epg_path, details,
+                    host_url=request.host_url,
+                ):
+                    return jsonify({'error': 'Failed to refresh Xtream playlist'}), 502
             else:
                 download_file(m3u_url, m3u_path)
                 download_file(epg_url, epg_path)
