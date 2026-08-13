@@ -1,0 +1,15 @@
+{
+  "category": "Live TV",
+  "changelog": "Integration-token inventory, last-use visibility, targeted revocation, safe rotation, and dashboard device controls.",
+  "description": "Synchronizes prepared Live TV, XMLTV and VOD artifacts from m3u.guide.",
+  "guid": "31ea5707-9f04-45c4-8aa3-52a6f9752ee5",
+  "name": "m3u.guide",
+  "overview": "Connect Jellyfin to an m3u.guide export profile.",
+  "owner": "m3u.guide",
+  "targetAbi": "10.11.3.0",
+  "timestamp": "2026-08-13T00:00:00Z",
+  "version": "0.8.0.0",
+  "status": "Active",
+  "autoUpdate": false,
+  "assemblies": ["Jellyfin.Plugin.M3uGuide.dll"]
+}

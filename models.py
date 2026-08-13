@@ -3,6 +3,7 @@ from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 import secrets
+import hashlib
 
 db = SQLAlchemy()
 
@@ -15,12 +16,40 @@ class User(db.Model):
     stream_token = db.Column(db.String(32), unique=True, nullable=False, default=lambda: secrets.token_hex(16))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     playlists = db.relationship('Playlist', backref='user', lazy=True, cascade='all, delete-orphan')
+    integration_tokens = db.relationship('IntegrationToken', backref='user', lazy=True, cascade='all, delete-orphan')
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
 
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
+
+class IntegrationToken(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
+    name = db.Column(db.String(100), nullable=False, default='Jellyfin')
+    token_hash = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    token_prefix = db.Column(db.String(12), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    last_used_at = db.Column(db.DateTime)
+    revoked_at = db.Column(db.DateTime)
+
+    @staticmethod
+    def digest(token):
+        return hashlib.sha256(token.encode('utf-8')).hexdigest()
+
+    @classmethod
+    def issue(cls, user, name='Jellyfin'):
+        token = secrets.token_urlsafe(32)
+        record = cls(
+            user_id=user.id,
+            name=name[:100] or 'Jellyfin',
+            token_hash=cls.digest(token),
+            token_prefix=token[:12],
+        )
+        db.session.add(record)
+        db.session.commit()
+        return record, token
 
 class Playlist(db.Model):
     id = db.Column(db.Integer, primary_key=True)

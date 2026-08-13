@@ -3,6 +3,7 @@ venv/
 env/
 ENV/
 .env
+.secrets/
 .venv/
 .ENV/
 .claude
@@ -85,5 +86,8 @@ coverage.xml
 instance/
 
 playlists/
+
+# Private production-scale integration fixtures and generated artifacts
+testdata/private/
 
 examplecommand

@@ -41,6 +41,7 @@ import socket
 import dns.resolver
 import ipaddress
 import random
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 log_enabled = False
@@ -689,17 +690,22 @@ def perform_get_request(url, request_headers, stream=False):
     return None
 
 
-def fetch_api_endpoint(url, name, headers, timeout=30):
-    try:
-        output_str("Fetching {}...".format(name))
-        response = requests.get(url, headers=headers, timeout=timeout)
-        if response.status_code == 200:
-            return name, response.json()
-        output_str("Failed to fetch {}: {}".format(name, response.status_code))
-        return name, None
-    except Exception as e:
-        output_str("Error fetching {}: {}".format(name, e))
-        return name, None
+def fetch_api_endpoint(url, name, headers, timeout=30, attempts=3):
+    for attempt in range(1, attempts + 1):
+        try:
+            output_str("Fetching {}{}...".format(
+                name, " (attempt {}/{})".format(attempt, attempts) if attempt > 1 else ""))
+            response = requests.get(url, headers=headers, timeout=timeout)
+            if response.status_code == 200:
+                return name, response.json()
+            output_str("Failed to fetch {}: {}".format(name, response.status_code))
+            if response.status_code not in (429, 500, 502, 503, 504):
+                break
+        except Exception as e:
+            output_str("Error fetching {}: {}".format(name, e))
+        if attempt < attempts:
+            time.sleep(attempt)
+    return name, None
 
 def get_m3u_from_api(url, headers, args=None, progress_cb=None):
     """Enhanced Xtream API retrieval with VOD and Series support"""
@@ -760,8 +766,8 @@ def get_m3u_from_api(url, headers, args=None, progress_cb=None):
         m3u_lines = ["#EXTM3U"]
 
         # Process Live
-        if results.get("live_categories") and results.get("live_streams"):
-            cats = {c['category_id']: c['category_name'] for c in results["live_categories"]}
+        if results.get("live_streams"):
+            cats = {c['category_id']: c['category_name'] for c in (results.get("live_categories") or [])}
             _prog("Building live channel entries…")
             for s in results["live_streams"]:
                 m3u_lines.append('#EXTINF:-1 tvg-id="{}" tvg-name="{}" tvg-logo="{}" group-title="{}",{}'.format(
@@ -773,8 +779,8 @@ def get_m3u_from_api(url, headers, args=None, progress_cb=None):
                 m3u_lines.append(s_url)
 
         # Process VOD
-        if results.get("vod_categories") and results.get("vod_streams"):
-            cats = {c['category_id']: c['category_name'] for c in results["vod_categories"]}
+        if results.get("vod_streams"):
+            cats = {c['category_id']: c['category_name'] for c in (results.get("vod_categories") or [])}
             _prog("Building VOD entries ({} movies)…".format(len(results["vod_streams"])))
             for s in results["vod_streams"]:
                 m3u_lines.append('#EXTINF:-1 tvg-id="{}" tvg-name="{}" tvg-logo="{}" group-title="{}",{}'.format(
@@ -786,9 +792,12 @@ def get_m3u_from_api(url, headers, args=None, progress_cb=None):
                 m3u_lines.append(s_url)
 
         # Process Series — fetch per-episode data via get_series_info
-        if results.get("series_categories") and results.get("series_streams"):
-            cats = {c['category_id']: c['category_name'] for c in results["series_categories"]}
+        if results.get("series_streams"):
+            cats = {c['category_id']: c['category_name'] for c in (results.get("series_categories") or [])}
             series_list = results["series_streams"]
+            series_limit = getattr(args, 'series_limit', None) if args else None
+            if series_limit is not None:
+                series_list = series_list[:max(0, int(series_limit))]
             total_series = len(series_list)
             _prog("Fetching episode details for {} series (this may take a while)…".format(total_series))
 

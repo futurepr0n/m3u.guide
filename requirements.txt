@@ -10,3 +10,4 @@ python_dateutil==2.9.0.post0
 tzlocal==4.3.1
 dnspython
 fake-useragent
+cryptography==45.0.6
